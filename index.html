@@ -28,6 +28,10 @@
         @media (max-width: 640px) {
             .ball { width: 2.5rem; height: 2.5rem; font-size: 1rem; }
         }
+
+        .tab-btn { transition: all 0.2s; }
+        .tab-btn.active { border-bottom: 2px solid #eab308; color: #eab308; }
+        .tab-btn:not(.active) { border-bottom: 2px solid transparent; color: #9ca3af; }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen pb-10">
@@ -40,68 +44,88 @@
         <p id="latest-info" class="text-xs text-green-400 mt-2 hidden"></p>
     </header>
 
+    <!-- タブ -->
+    <div class="max-w-3xl mx-auto px-4 mt-4">
+        <div class="flex border-b border-gray-700">
+            <button class="tab-btn active px-6 py-3 font-bold text-sm" onclick="switchTab('prediction')">🎯 今週の予想</button>
+            <button class="tab-btn px-6 py-3 font-bold text-sm" onclick="switchTab('history')">📊 結果照合</button>
+        </div>
+    </div>
+
     <main class="max-w-3xl mx-auto p-4 mt-4 space-y-8">
 
-        <!-- 予想セクション（3パターン） -->
-        <div>
-            <h2 id="prediction-title" class="text-xl font-bold mb-4 text-center">次回の予想番号</h2>
+        <!-- ===== 予想タブ ===== -->
+        <div id="tab-prediction">
 
-            <!-- パターンA: 王道 -->
-            <div class="bg-gray-800 p-5 rounded-xl shadow-lg border border-yellow-700 mb-4">
-                <div class="flex items-center gap-2 mb-3">
-                    <span class="text-xl">👑</span>
-                    <h3 class="font-bold text-yellow-400 text-lg">王道</h3>
-                    <span class="text-xs text-gray-400 ml-auto">出現頻度 + トレンド + ペア相性</span>
+            <!-- 予想セクション（3パターン） -->
+            <div>
+                <h2 id="prediction-title" class="text-xl font-bold mb-4 text-center">次回の予想番号</h2>
+
+                <!-- パターンA: 王道 -->
+                <div class="bg-gray-800 p-5 rounded-xl shadow-lg border border-yellow-700 mb-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="text-xl">👑</span>
+                        <h3 class="font-bold text-yellow-400 text-lg">王道</h3>
+                        <span class="text-xs text-gray-400 ml-auto">出現頻度 + トレンド + ペア相性</span>
+                    </div>
+                    <div id="pattern-a-balls" class="flex flex-wrap gap-2 sm:gap-3 mb-3"></div>
+                    <p id="pattern-a-reason" class="text-xs text-gray-400"></p>
                 </div>
-                <div id="pattern-a-balls" class="flex flex-wrap gap-2 sm:gap-3 mb-3"></div>
-                <p id="pattern-a-reason" class="text-xs text-gray-400"></p>
+
+                <!-- パターンB: 逆張り -->
+                <div class="bg-gray-800 p-5 rounded-xl shadow-lg border border-blue-700 mb-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="text-xl">🧊</span>
+                        <h3 class="font-bold text-blue-400 text-lg">逆張り</h3>
+                        <span class="text-xs text-gray-400 ml-auto">冷えてる番号を優先採用</span>
+                    </div>
+                    <div id="pattern-b-balls" class="flex flex-wrap gap-2 sm:gap-3 mb-3"></div>
+                    <p id="pattern-b-reason" class="text-xs text-gray-400"></p>
+                </div>
+
+                <!-- パターンC: バランス -->
+                <div class="bg-gray-800 p-5 rounded-xl shadow-lg border border-purple-700 mb-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="text-xl">⚖️</span>
+                        <h3 class="font-bold text-purple-400 text-lg">バランス</h3>
+                        <span class="text-xs text-gray-400 ml-auto">熱い3 + 冷え2 + ペア相性上位2</span>
+                    </div>
+                    <div id="pattern-c-balls" class="flex flex-wrap gap-2 sm:gap-3 mb-3"></div>
+                    <p id="pattern-c-reason" class="text-xs text-gray-400"></p>
+                </div>
             </div>
 
-            <!-- パターンB: 逆張り -->
-            <div class="bg-gray-800 p-5 rounded-xl shadow-lg border border-blue-700 mb-4">
-                <div class="flex items-center gap-2 mb-3">
-                    <span class="text-xl">🧊</span>
-                    <h3 class="font-bold text-blue-400 text-lg">逆張り</h3>
-                    <span class="text-xs text-gray-400 ml-auto">冷えてる番号を優先採用</span>
+            <!-- 熱い・冷えている番号 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                    <h3 class="font-bold text-red-400 mb-2 flex items-center"><span class="text-xl mr-2">🔥</span> 熱い番号</h3>
+                    <p class="text-xs text-gray-400 mb-3">最近10回で多く出ている番号</p>
+                    <div id="hot-numbers" class="flex flex-wrap gap-2"></div>
                 </div>
-                <div id="pattern-b-balls" class="flex flex-wrap gap-2 sm:gap-3 mb-3"></div>
-                <p id="pattern-b-reason" class="text-xs text-gray-400"></p>
+                <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                    <h3 class="font-bold text-blue-400 mb-2 flex items-center"><span class="text-xl mr-2">🧊</span> 冷えている番号</h3>
+                    <p class="text-xs text-gray-400 mb-3">最近10回で一度も出ていない番号</p>
+                    <div id="cold-numbers" class="flex flex-wrap gap-2"></div>
+                </div>
             </div>
 
-            <!-- パターンC: バランス -->
-            <div class="bg-gray-800 p-5 rounded-xl shadow-lg border border-purple-700 mb-4">
-                <div class="flex items-center gap-2 mb-3">
-                    <span class="text-xl">⚖️</span>
-                    <h3 class="font-bold text-purple-400 text-lg">バランス</h3>
-                    <span class="text-xs text-gray-400 ml-auto">熱い3 + 冷え2 + ペア相性上位2</span>
+            <!-- 出現頻度チャート -->
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                <h3 class="font-bold mb-4">全期間の出現頻度</h3>
+                <div class="w-full overflow-x-auto">
+                    <div style="min-width: 600px; height: 300px;">
+                        <canvas id="freqChart"></canvas>
+                    </div>
                 </div>
-                <div id="pattern-c-balls" class="flex flex-wrap gap-2 sm:gap-3 mb-3"></div>
-                <p id="pattern-c-reason" class="text-xs text-gray-400"></p>
             </div>
+
         </div>
 
-        <!-- 熱い・冷えている番号 -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                <h3 class="font-bold text-red-400 mb-2 flex items-center"><span class="text-xl mr-2">🔥</span> 熱い番号</h3>
-                <p class="text-xs text-gray-400 mb-3">最近10回で多く出ている番号</p>
-                <div id="hot-numbers" class="flex flex-wrap gap-2"></div>
-            </div>
-            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                <h3 class="font-bold text-blue-400 mb-2 flex items-center"><span class="text-xl mr-2">🧊</span> 冷えている番号</h3>
-                <p class="text-xs text-gray-400 mb-3">最近10回で一度も出ていない番号</p>
-                <div id="cold-numbers" class="flex flex-wrap gap-2"></div>
-            </div>
-        </div>
-
-        <!-- 出現頻度チャート -->
-        <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
-            <h3 class="font-bold mb-4">全期間の出現頻度</h3>
-            <div class="w-full overflow-x-auto">
-                <div style="min-width: 600px; height: 300px;">
-                    <canvas id="freqChart"></canvas>
-                </div>
-            </div>
+        <!-- ===== 結果照合タブ ===== -->
+        <div id="tab-history" class="hidden">
+            <h2 class="text-xl font-bold mb-4 text-center">結果照合（最新10件）</h2>
+            <p class="text-xs text-gray-400 mb-4 text-center">スプレッドシートの当選番号と予想を照合します。データ再取得時に自動更新。</p>
+            <div id="history-list" class="space-y-3"></div>
         </div>
 
     </main>
@@ -116,6 +140,17 @@
         let currentAnalysis = null;
         let nextRoundNum = 1;
         let freqChartInstance = null;
+
+        // タブ切り替え
+        function switchTab(tab) {
+            document.getElementById('tab-prediction').classList.toggle('hidden', tab !== 'prediction');
+            document.getElementById('tab-history').classList.toggle('hidden', tab !== 'history');
+            document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+                const isActive = (tab === 'prediction' && i === 0) || (tab === 'history' && i === 1);
+                btn.classList.toggle('active', isActive);
+            });
+            if (tab === 'history') renderHistory();
+        }
 
         // 初期化
         function init() {
@@ -142,6 +177,8 @@
                 }
 
                 analyzeData();
+                saveToLocalStorage();         // 変更3: 自動保存
+                checkAndUpdateHistory();       // 変更4: 結果照合更新
                 renderPrediction();
                 renderCharts();
                 document.getElementById('loading-msg').classList.add('hidden');
@@ -277,6 +314,143 @@
             patternC = patternC.sort((a, b) => a.num - b.num);
 
             currentAnalysis = { patternA, patternB, patternC, counts, hotNumbers, coldNumbers, scores };
+        }
+
+        // ===== 変更3: LocalStorage自動保存 =====
+        function saveToLocalStorage() {
+            if (!currentAnalysis || !nextRoundNum) return;
+
+            const today = new Date().toISOString().slice(0, 10);
+            const entry = {
+                targetRound: nextRoundNum,
+                date: today,
+                patternA: currentAnalysis.patternA.map(s => s.num),
+                patternB: currentAnalysis.patternB.map(s => s.num),
+                patternC: currentAnalysis.patternC.map(s => s.num),
+                result: null,
+                matchA: null,
+                matchB: null,
+                matchC: null
+            };
+
+            let stored = [];
+            try {
+                stored = JSON.parse(localStorage.getItem('preloto_history') || '[]');
+            } catch (e) { stored = []; }
+
+            // 同一回号があれば上書きしない
+            if (stored.some(e => e.targetRound === nextRoundNum)) return;
+
+            stored.unshift(entry);
+
+            // 10件上限
+            if (stored.length > 10) stored = stored.slice(0, 10);
+
+            localStorage.setItem('preloto_history', JSON.stringify(stored));
+        }
+
+        // ===== 変更4: 結果照合更新 =====
+        function countMatches(pattern, result) {
+            return pattern.filter(n => result.includes(n)).length;
+        }
+
+        function getGrade(matchCount) {
+            if (matchCount >= 7) return '1等';
+            if (matchCount >= 6) return '3等';
+            if (matchCount >= 5) return '4等';
+            if (matchCount >= 4) return '5等';
+            if (matchCount >= 3) return '6等';
+            return 'ハズレ';
+        }
+
+        function getGradeColor(grade) {
+            if (grade === '1等') return 'text-yellow-400 font-bold';
+            if (grade === '3等') return 'text-orange-400 font-bold';
+            if (grade === '4等') return 'text-blue-400 font-bold';
+            if (grade === '5等') return 'text-purple-400';
+            if (grade === '6等') return 'text-gray-300';
+            return 'text-gray-500';
+        }
+
+        function checkAndUpdateHistory() {
+            let stored = [];
+            try {
+                stored = JSON.parse(localStorage.getItem('preloto_history') || '[]');
+            } catch (e) { return; }
+
+            let updated = false;
+            stored.forEach(entry => {
+                if (entry.result !== null) return;
+                // historyData に targetRound のデータがあれば照合
+                const found = historyData.find(h => h.round === entry.targetRound);
+                if (!found) return;
+
+                entry.result = found.numbers;
+                entry.matchA = countMatches(entry.patternA, entry.result);
+                entry.matchB = countMatches(entry.patternB, entry.result);
+                entry.matchC = countMatches(entry.patternC, entry.result);
+                updated = true;
+            });
+
+            if (updated) {
+                localStorage.setItem('preloto_history', JSON.stringify(stored));
+            }
+        }
+
+        function renderHistory() {
+            let stored = [];
+            try {
+                stored = JSON.parse(localStorage.getItem('preloto_history') || '[]');
+            } catch (e) { stored = []; }
+
+            const container = document.getElementById('history-list');
+
+            if (stored.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-500 py-8">履歴がありません。予想を読み込むと自動で保存されます。</p>';
+                return;
+            }
+
+            container.innerHTML = stored.map(entry => {
+                const hasResult = entry.result !== null;
+
+                const ballHtml = (nums, colorClass) =>
+                    nums.map(n => `<span class="inline-flex w-7 h-7 rounded-full ${colorClass} items-center justify-center text-xs font-bold border">${n}</span>`).join('');
+
+                const patternRow = (label, nums, match, colorClass, borderColor) => {
+                    const grade = hasResult && match !== null ? getGrade(match) : null;
+                    const gradeColor = grade ? getGradeColor(grade) : '';
+                    return `
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-xs text-gray-400 w-12">${label}</span>
+                            <div class="flex flex-wrap gap-1">${ballHtml(nums, colorClass)}</div>
+                            ${hasResult && match !== null
+                                ? `<span class="text-xs ml-auto ${gradeColor}">${match}個一致 → ${grade}</span>`
+                                : '<span class="text-xs ml-auto text-gray-600">未照合</span>'
+                            }
+                        </div>`;
+                };
+
+                const resultHtml = hasResult
+                    ? `<div class="mt-2 pt-2 border-t border-gray-700 flex items-center gap-2 flex-wrap">
+                           <span class="text-xs text-gray-400 w-12">当選</span>
+                           <div class="flex flex-wrap gap-1">${ballHtml(entry.result, 'bg-red-900 text-red-200 border-red-700')}</div>
+                       </div>`
+                    : `<div class="mt-2 pt-2 border-t border-gray-700 text-xs text-gray-600">当選番号未公開</div>`;
+
+                return `
+                    <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="font-bold text-yellow-400">第${entry.targetRound}回</span>
+                            <span class="text-xs text-gray-500">${entry.date}</span>
+                        </div>
+                        <div class="space-y-2">
+                            ${patternRow('👑 王道', entry.patternA, entry.matchA, 'bg-yellow-900 text-yellow-200 border-yellow-700', 'yellow')}
+                            ${patternRow('🧊 逆張り', entry.patternB, entry.matchB, 'bg-blue-900 text-blue-200 border-blue-700', 'blue')}
+                            ${patternRow('⚖️ バランス', entry.patternC, entry.matchC, 'bg-purple-900 text-purple-200 border-purple-700', 'purple')}
+                        </div>
+                        ${resultHtml}
+                    </div>`;
+            }).join('');
         }
 
         // 予想画面の描画
