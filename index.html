@@ -20,9 +20,9 @@
             text-shadow: 1px 1px 2px rgba(255,255,255,0.5);
         }
         .ball-yellow { background: linear-gradient(135deg, #fef08a, #eab308); color: #422006; }
-        .ball-gray { background: linear-gradient(135deg, #9ca3af, #4b5563); color: #ffffff; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); }
-        .ball-green { background: linear-gradient(135deg, #86efac, #22c55e); color: #064e3b; }
-        .ball-red { background: linear-gradient(135deg, #fca5a5, #ef4444); color: #450a0a; }
+        .ball-gray   { background: linear-gradient(135deg, #9ca3af, #4b5563); color: #ffffff; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); }
+        .ball-blue   { background: linear-gradient(135deg, #93c5fd, #3b82f6); color: #1e3a5f; text-shadow: none; }
+        .ball-purple { background: linear-gradient(135deg, #c4b5fd, #8b5cf6); color: #2e1065; text-shadow: none; }
 
         /* スマホ用調整 */
         @media (max-width: 640px) {
@@ -40,95 +40,69 @@
         <p id="latest-info" class="text-xs text-green-400 mt-2 hidden"></p>
     </header>
 
-    <!-- タブナビゲーション -->
-    <div class="flex justify-center border-b border-gray-700 bg-gray-800">
-        <button onclick="switchTab('predict')" id="tab-predict" class="flex-1 py-3 text-center font-bold text-yellow-400 border-b-2 border-yellow-400 transition-colors">今週の予想</button>
-        <button onclick="switchTab('history')" id="tab-history" class="flex-1 py-3 text-center font-bold text-gray-400 border-b-2 border-transparent hover:text-gray-200 transition-colors">履歴・分析</button>
-    </div>
+    <main class="max-w-3xl mx-auto p-4 mt-4 space-y-8">
 
-    <main class="max-w-3xl mx-auto p-4 mt-4">
+        <!-- 予想セクション（3パターン） -->
+        <div>
+            <h2 id="prediction-title" class="text-xl font-bold mb-4 text-center">次回の予想番号</h2>
 
-        <!-- 予想タブ -->
-        <section id="sec-predict" class="space-y-8">
-
-            <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 text-center">
-                <h2 id="prediction-title" class="text-xl font-bold mb-4">次回の予想番号</h2>
-                <div id="prediction-balls" class="flex flex-wrap justify-center gap-2 sm:gap-4 mb-6">
-                    <!-- ボールがここに表示される -->
+            <!-- パターンA: 王道 -->
+            <div class="bg-gray-800 p-5 rounded-xl shadow-lg border border-yellow-700 mb-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="text-xl">👑</span>
+                    <h3 class="font-bold text-yellow-400 text-lg">王道</h3>
+                    <span class="text-xs text-gray-400 ml-auto">出現頻度 + トレンド + ペア相性</span>
                 </div>
-
-                <div class="text-left bg-gray-900 p-4 rounded-lg border border-gray-700 mb-6">
-                    <h3 class="font-bold text-yellow-400 border-b border-gray-700 pb-2 mb-3">なぜこの番号？（選出理由）</h3>
-                    <ul id="prediction-reasons" class="space-y-2 text-sm text-gray-300">
-                        <!-- 理由がここに表示される -->
-                    </ul>
-                </div>
-
-                <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                    <button onclick="savePrediction()" class="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 px-6 rounded-full shadow-lg transition-transform transform hover:scale-105">
-                        この予想を保存する
-                    </button>
-                </div>
+                <div id="pattern-a-balls" class="flex flex-wrap gap-2 sm:gap-3 mb-3"></div>
+                <p id="pattern-a-reason" class="text-xs text-gray-400"></p>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                    <h3 class="font-bold text-red-400 mb-2 flex items-center"><span class="text-xl mr-2">🔥</span> 熱い番号</h3>
-                    <p class="text-xs text-gray-400 mb-3">最近10回で多く出ている番号</p>
-                    <div id="hot-numbers" class="flex flex-wrap gap-2"></div>
+            <!-- パターンB: 逆張り -->
+            <div class="bg-gray-800 p-5 rounded-xl shadow-lg border border-blue-700 mb-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="text-xl">🧊</span>
+                    <h3 class="font-bold text-blue-400 text-lg">逆張り</h3>
+                    <span class="text-xs text-gray-400 ml-auto">冷えてる番号を優先採用</span>
                 </div>
-                <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                    <h3 class="font-bold text-blue-400 mb-2 flex items-center"><span class="text-xl mr-2">🧊</span> 冷えている番号</h3>
-                    <p class="text-xs text-gray-400 mb-3">最近10回で一度も出ていない番号</p>
-                    <div id="cold-numbers" class="flex flex-wrap gap-2"></div>
-                </div>
+                <div id="pattern-b-balls" class="flex flex-wrap gap-2 sm:gap-3 mb-3"></div>
+                <p id="pattern-b-reason" class="text-xs text-gray-400"></p>
             </div>
 
+            <!-- パターンC: バランス -->
+            <div class="bg-gray-800 p-5 rounded-xl shadow-lg border border-purple-700 mb-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="text-xl">⚖️</span>
+                    <h3 class="font-bold text-purple-400 text-lg">バランス</h3>
+                    <span class="text-xs text-gray-400 ml-auto">熱い3 + 冷え2 + ペア相性上位2</span>
+                </div>
+                <div id="pattern-c-balls" class="flex flex-wrap gap-2 sm:gap-3 mb-3"></div>
+                <p id="pattern-c-reason" class="text-xs text-gray-400"></p>
+            </div>
+        </div>
+
+        <!-- 熱い・冷えている番号 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                <h3 class="font-bold mb-4">全期間の出現頻度</h3>
-                <div class="w-full overflow-x-auto">
-                    <div style="min-width: 600px; height: 300px;">
-                        <canvas id="freqChart"></canvas>
-                    </div>
+                <h3 class="font-bold text-red-400 mb-2 flex items-center"><span class="text-xl mr-2">🔥</span> 熱い番号</h3>
+                <p class="text-xs text-gray-400 mb-3">最近10回で多く出ている番号</p>
+                <div id="hot-numbers" class="flex flex-wrap gap-2"></div>
+            </div>
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                <h3 class="font-bold text-blue-400 mb-2 flex items-center"><span class="text-xl mr-2">🧊</span> 冷えている番号</h3>
+                <p class="text-xs text-gray-400 mb-3">最近10回で一度も出ていない番号</p>
+                <div id="cold-numbers" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+
+        <!-- 出現頻度チャート -->
+        <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+            <h3 class="font-bold mb-4">全期間の出現頻度</h3>
+            <div class="w-full overflow-x-auto">
+                <div style="min-width: 600px; height: 300px;">
+                    <canvas id="freqChart"></canvas>
                 </div>
             </div>
-
-        </section>
-
-        <!-- 履歴・分析タブ -->
-        <section id="sec-history" class="hidden space-y-8">
-
-            <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
-                <h2 class="text-xl font-bold mb-4">全体分析</h2>
-                <div class="grid grid-cols-2 gap-4 mb-6">
-                    <div class="bg-gray-900 p-4 rounded-lg text-center border border-gray-700">
-                        <p class="text-sm text-gray-400">平均一致率</p>
-                        <p id="avg-match-rate" class="text-3xl font-bold text-yellow-400">0.0%</p>
-                    </div>
-                    <div class="bg-gray-900 p-4 rounded-lg text-center border border-gray-700">
-                        <p class="text-sm text-gray-400">照合済み回数</p>
-                        <p id="total-checked" class="text-3xl font-bold text-white">0回</p>
-                    </div>
-                </div>
-
-                <div id="trend-comment" class="bg-blue-900 bg-opacity-30 border border-blue-800 p-4 rounded-lg text-sm text-blue-200 mb-6">
-                    データがありません。予想を保存して結果を照合してください。
-                </div>
-
-                <h3 class="font-bold mb-4">一致率の推移</h3>
-                <div class="w-full" style="height: 250px;">
-                    <canvas id="trendChart"></canvas>
-                </div>
-            </div>
-
-            <div>
-                <h2 class="text-xl font-bold mb-4">保存した予想と結果</h2>
-                <div id="history-list" class="space-y-4">
-                    <!-- 履歴リストがここに入る -->
-                </div>
-            </div>
-
-        </section>
+        </div>
 
     </main>
 
@@ -138,17 +112,13 @@
 
     <script>
         // --- データ状態管理 ---
-        let historyData = []; // スプレッドシートのデータ (index 0 が最新)
-        let savedPredictions = []; // 保存された予想データ
-        let currentAnalysis = null; // 現在の分析結果
-        let nextRoundNum = 1; // 次回の回数
-
+        let historyData = [];    // スプレッドシートのデータ (index 0 が最新)
+        let currentAnalysis = null;
+        let nextRoundNum = 1;
         let freqChartInstance = null;
-        let trendChartInstance = null;
 
         // 初期化
         function init() {
-            loadData();
             fetchSheetData();
         }
 
@@ -165,20 +135,20 @@
 
                 if (historyData.length > 0) {
                     nextRoundNum = historyData[0].round + 1;
-                    document.getElementById('latest-info').innerText = `最新データ: 第${historyData[0].round}回 (${historyData[0].date}) 読込完了`;
+                    document.getElementById('latest-info').innerText =
+                        `最新データ: 第${historyData[0].round}回 (${historyData[0].date}) 読込完了`;
                     document.getElementById('latest-info').classList.remove('hidden');
                     document.getElementById('prediction-title').innerText = `第${nextRoundNum}回の予想番号`;
                 }
 
-                autoCheckResults();
                 analyzeData();
                 renderPrediction();
                 renderCharts();
-                renderHistory();
                 document.getElementById('loading-msg').classList.add('hidden');
             } catch (e) {
                 console.error(e);
-                document.getElementById('loading-msg').innerText = 'データの読み込みに失敗したよ。スプレッドシートが公開されているか確認してね。';
+                document.getElementById('loading-msg').innerText =
+                    'データの読み込みに失敗したよ。スプレッドシートが公開されているか確認してね。';
                 document.getElementById('loading-msg').classList.replace('text-blue-400', 'text-red-400');
             }
         }
@@ -202,40 +172,10 @@
                     historyData.push({ round: roundNum, date: parts[1], numbers: nums });
                 }
             }
-            // 最新回を先頭にする
             historyData.sort((a, b) => b.round - a.round);
         }
 
-        // 自動で結果を照合
-        function autoCheckResults() {
-            let updated = false;
-            savedPredictions.forEach(pred => {
-                if (!pred.result) {
-                    const actualDraw = historyData.find(h => h.round === pred.targetRound);
-                    if (actualDraw) {
-                        pred.result = actualDraw.numbers;
-                        let matchCount = 0;
-                        pred.numbers.forEach(n => {
-                            if (actualDraw.numbers.includes(n)) matchCount++;
-                        });
-                        pred.matchCount = matchCount;
-                        updated = true;
-                    }
-                }
-            });
-            if (updated) saveData();
-        }
-
-        // LocalStorageとのやり取り
-        function loadData() {
-            const p = localStorage.getItem('loto7_predictions');
-            if (p) savedPredictions = JSON.parse(p);
-        }
-        function saveData() {
-            localStorage.setItem('loto7_predictions', JSON.stringify(savedPredictions));
-        }
-
-        // 分析ロジック
+        // 分析ロジック（3パターン生成）
         function analyzeData() {
             const counts = new Array(38).fill(0);
             const last10Counts = new Array(38).fill(0);
@@ -249,7 +189,6 @@
                     if (index < 10) last10Counts[num]++;
                     if (lastSeen[num] === -1) lastSeen[num] = index;
 
-                    // ペアの集計
                     for (let i = 0; i < draw.length; i++) {
                         for (let j = i + 1; j < draw.length; j++) {
                             const p = `${draw[i]}-${draw[j]}`;
@@ -266,15 +205,15 @@
                 if (last10Counts[i] === 0) coldNumbers.push(i);
             }
 
-            // スコアリング
+            // スコアリング（全番号）
             const scores = [];
             for (let i = 1; i <= 37; i++) {
-                let score = counts[i] * 5; // 全データがあるので重みを少し下げる
+                let score = counts[i] * 5;
                 let reasons = [`全期間で${counts[i]}回出現`];
 
                 if (lastSeen[i] > 0 && lastSeen[i] <= 5) {
                     score += 15;
-                    reasons.push(`直近5回以内に1度出ており間隔が良好`);
+                    reasons.push(`直近5回以内に出ており間隔が良好`);
                 }
 
                 let maxPairCount = 0;
@@ -288,7 +227,6 @@
                     }
                 }
 
-                // 全期間なのでペア出現も多い。15回以上を強いと判定
                 if (maxPairCount >= 15) {
                     score += maxPairCount;
                     reasons.push(`${bestPartner}番とよく一緒に出る（${maxPairCount}回）`);
@@ -299,7 +237,7 @@
                     reasons.push(`最近のトレンドに乗っている熱い番号`);
                 }
 
-                scores.push({ num: i, score, freq: counts[i], reasons });
+                scores.push({ num: i, score, freq: counts[i], last10: last10Counts[i], maxPairCount, bestPartner, reasons });
             }
 
             scores.sort((a, b) => {
@@ -308,185 +246,86 @@
                 return a.num - b.num;
             });
 
-            const prediction = scores.slice(0, 7).sort((a,b) => a.num - b.num);
+            // --- パターンA「王道」: スコア上位7個 ---
+            const patternA = scores.slice(0, 7).sort((a, b) => a.num - b.num);
 
-            currentAnalysis = { prediction, counts, hotNumbers, coldNumbers, scores };
+            // --- パターンB「逆張り」: last10Counts 0 or 1 の冷え番号を優先、足りない分は通常スコア順 ---
+            const coldPool  = scores.filter(s => s.last10 <= 1);
+            const warmPool  = scores.filter(s => s.last10 > 1);
+            const bPick     = [...coldPool.slice(0, 5), ...warmPool.slice(0, 2)];
+            const patternB  = bPick.slice(0, 7).sort((a, b) => a.num - b.num);
+
+            // --- パターンC「バランス」: 熱い3 + 冷え2 + ペア相性上位2 ---
+            const hotPool    = scores.filter(s => hotNumbers.includes(s.num));
+            const coldPool2  = scores.filter(s => coldNumbers.includes(s.num));
+            const pairSorted = [...scores].sort((a, b) => b.maxPairCount - a.maxPairCount);
+
+            const c_hot  = hotPool.slice(0, 3);
+            const usedC  = new Set(c_hot.map(s => s.num));
+
+            const c_cold = coldPool2.filter(s => !usedC.has(s.num)).slice(0, 2);
+            c_cold.forEach(s => usedC.add(s.num));
+
+            const c_pair = pairSorted.filter(s => !usedC.has(s.num)).slice(0, 2);
+            c_pair.forEach(s => usedC.add(s.num));
+
+            let patternC = [...c_hot, ...c_cold, ...c_pair];
+            if (patternC.length < 7) {
+                const fill = scores.filter(s => !usedC.has(s.num)).slice(0, 7 - patternC.length);
+                patternC = [...patternC, ...fill];
+            }
+            patternC = patternC.sort((a, b) => a.num - b.num);
+
+            currentAnalysis = { patternA, patternB, patternC, counts, hotNumbers, coldNumbers, scores };
         }
 
         // 予想画面の描画
         function renderPrediction() {
-            const ballsContainer = document.getElementById('prediction-balls');
-            const reasonsContainer = document.getElementById('prediction-reasons');
-            ballsContainer.innerHTML = '';
-            reasonsContainer.innerHTML = '';
-
-            currentAnalysis.prediction.forEach(item => {
-                ballsContainer.innerHTML += `<div class="ball ball-yellow">${item.num}</div>`;
-
-                const reasonHtml = item.reasons.map(r => `<span class="bg-gray-800 px-2 py-1 rounded text-xs inline-block break-words">${r}</span>`).join('');
-                reasonsContainer.innerHTML += `<li class="border-b border-gray-800 pb-2"><strong class="text-white text-lg inline-block w-8">${item.num}</strong>: <span class="inline-flex flex-wrap gap-1">${reasonHtml}</span></li>`;
+            // パターンA（王道）
+            const aContainer = document.getElementById('pattern-a-balls');
+            aContainer.innerHTML = '';
+            currentAnalysis.patternA.forEach(item => {
+                aContainer.innerHTML += `<div class="ball ball-yellow">${item.num}</div>`;
             });
+            document.getElementById('pattern-a-reason').textContent =
+                `スコア上位7番号: ${currentAnalysis.patternA.map(i => i.num).join('・')}`;
+
+            // パターンB（逆張り）
+            const bContainer = document.getElementById('pattern-b-balls');
+            bContainer.innerHTML = '';
+            currentAnalysis.patternB.forEach(item => {
+                bContainer.innerHTML += `<div class="ball ball-blue">${item.num}</div>`;
+            });
+            const coldInB = currentAnalysis.patternB.filter(i => i.last10 <= 1).map(i => i.num);
+            document.getElementById('pattern-b-reason').textContent =
+                `直近10回で0〜1回の番号を優先採用。冷え番号: ${coldInB.length > 0 ? coldInB.join('・') : 'なし'}`;
+
+            // パターンC（バランス）
+            const cContainer = document.getElementById('pattern-c-balls');
+            cContainer.innerHTML = '';
+            currentAnalysis.patternC.forEach(item => {
+                cContainer.innerHTML += `<div class="ball ball-purple">${item.num}</div>`;
+            });
+            const hotInC  = currentAnalysis.patternC.filter(i => currentAnalysis.hotNumbers.includes(i.num)).map(i => i.num);
+            const coldInC = currentAnalysis.patternC.filter(i => currentAnalysis.coldNumbers.includes(i.num)).map(i => i.num);
+            document.getElementById('pattern-c-reason').textContent =
+                `熱い番号(${hotInC.length > 0 ? hotInC.join('・') : 'なし'}) + ` +
+                `冷え番号(${coldInC.length > 0 ? coldInC.join('・') : 'なし'}) + ペア相性上位でミックス`;
 
             // 熱い・冷えている
-            const hotContainer = document.getElementById('hot-numbers');
-            hotContainer.innerHTML = currentAnalysis.hotNumbers.map(n => `<span class="inline-block w-8 h-8 rounded-full bg-red-900 text-red-200 flex items-center justify-center text-sm font-bold border border-red-700">${n}</span>`).join('') || '<span class="text-sm text-gray-500">なし</span>';
+            const hotContainer  = document.getElementById('hot-numbers');
+            hotContainer.innerHTML  = currentAnalysis.hotNumbers.map(n =>
+                `<span class="inline-flex w-8 h-8 rounded-full bg-red-900 text-red-200 items-center justify-center text-sm font-bold border border-red-700">${n}</span>`
+            ).join('') || '<span class="text-sm text-gray-500">なし</span>';
 
             const coldContainer = document.getElementById('cold-numbers');
-            coldContainer.innerHTML = currentAnalysis.coldNumbers.map(n => `<span class="inline-block w-8 h-8 rounded-full bg-blue-900 text-blue-200 flex items-center justify-center text-sm font-bold border border-blue-700">${n}</span>`).join('') || '<span class="text-sm text-gray-500">なし</span>';
-        }
-
-        // 予想を保存
-        function savePrediction() {
-            const nums = currentAnalysis.prediction.map(p => p.num);
-
-            const isExist = savedPredictions.some(p => p.targetRound === nextRoundNum);
-
-            if (isExist) {
-                alert(`第${nextRoundNum}回の予想はすでに保存されているよ。`);
-                return;
-            }
-
-            const newId = Date.now();
-            savedPredictions.unshift({
-                id: newId,
-                targetRound: nextRoundNum,
-                date: new Date().toLocaleDateString('ja-JP'),
-                numbers: nums,
-                result: null,
-                matchCount: 0
-            });
-            saveData();
-            renderHistory();
-            alert(`第${nextRoundNum}回の予想を保存したよ！\nスプレッドシートが更新されたら自動で結果を照合するね。`);
-        }
-
-        // タブ切り替え
-        function switchTab(tab) {
-            document.getElementById('sec-predict').classList.add('hidden');
-            document.getElementById('sec-history').classList.add('hidden');
-            document.getElementById('tab-predict').classList.replace('text-yellow-400', 'text-gray-400');
-            document.getElementById('tab-predict').classList.replace('border-yellow-400', 'border-transparent');
-            document.getElementById('tab-history').classList.replace('text-yellow-400', 'text-gray-400');
-            document.getElementById('tab-history').classList.replace('border-yellow-400', 'border-transparent');
-
-            if (tab === 'predict') {
-                document.getElementById('sec-predict').classList.remove('hidden');
-                document.getElementById('tab-predict').classList.replace('text-gray-400', 'text-yellow-400');
-                document.getElementById('tab-predict').classList.replace('border-transparent', 'border-yellow-400');
-            } else {
-                document.getElementById('sec-history').classList.remove('hidden');
-                document.getElementById('tab-history').classList.replace('text-gray-400', 'text-yellow-400');
-                document.getElementById('tab-history').classList.replace('border-transparent', 'border-yellow-400');
-                renderHistory();
-            }
-        }
-
-        // 履歴と分析の描画
-        function renderHistory() {
-            const listContainer = document.getElementById('history-list');
-            listContainer.innerHTML = '';
-
-            let totalMatches = 0;
-            let checkedCount = 0;
-            const trendData = [];
-
-            const missedNumbers = {};
-            const hitNumbers = {};
-
-            savedPredictions.forEach(pred => {
-                if (pred.result) {
-                    checkedCount++;
-                    totalMatches += pred.matchCount;
-                    trendData.unshift((pred.matchCount / 7) * 100);
-
-                    pred.numbers.forEach(n => {
-                        if(pred.result.includes(n)) {
-                            hitNumbers[n] = (hitNumbers[n] || 0) + 1;
-                        } else {
-                            missedNumbers[n] = (missedNumbers[n] || 0) + 1;
-                        }
-                    });
-                }
-
-                const isChecked = pred.result !== null;
-                const rate = isChecked ? ((pred.matchCount / 7) * 100).toFixed(1) : '-';
-
-                let ballsHtml = pred.numbers.map(n => {
-                    if (!isChecked) return `<div class="ball ball-gray w-8 h-8 text-sm">${n}</div>`;
-                    const isHit = pred.result.includes(n);
-                    return isHit ? `<div class="ball ball-green w-8 h-8 text-sm">${n}</div>` : `<div class="ball ball-gray opacity-50 w-8 h-8 text-sm">${n}</div>`;
-                }).join('');
-
-                let resultHtml = '';
-                if (isChecked) {
-                    resultHtml = `
-                        <div class="mt-3 pt-3 border-t border-gray-700 text-sm">
-                            <div class="flex justify-between text-gray-400 mb-1"><span>実際の当選番号</span><span class="text-white font-bold">${pred.matchCount}個一致 (${rate}%)</span></div>
-                            <div class="flex gap-1 flex-wrap">
-                                ${pred.result.map(n => `<span class="inline-block px-2 py-1 bg-gray-900 rounded border border-gray-600">${n}</span>`).join('')}
-                            </div>
-                        </div>
-                    `;
-                }
-
-                listContainer.innerHTML += `
-                    <div class="bg-gray-800 p-4 rounded-lg border border-gray-700 relative">
-                        <div class="flex justify-between items-center mb-3">
-                            <span class="text-sm text-gray-400">第${pred.targetRound}回 予想 (保存日: ${pred.date})</span>
-                            ${!isChecked ? `<span class="text-xs bg-blue-600 px-2 py-1 rounded text-white">結果待ち</span>` : `<span class="text-xs bg-gray-700 px-2 py-1 rounded text-green-400 font-bold">照合済</span>`}
-                        </div>
-                        <div class="flex flex-wrap gap-1">
-                            ${ballsHtml}
-                        </div>
-                        ${resultHtml}
-                        <button onclick="deletePrediction(${pred.id})" class="absolute bottom-2 right-2 text-gray-500 hover:text-red-400 text-xs">削除</button>
-                    </div>
-                `;
-            });
-
-            if (savedPredictions.length === 0) {
-                listContainer.innerHTML = '<p class="text-gray-500 text-center py-8">保存された予想はありません。</p>';
-            }
-
-            const avg = checkedCount > 0 ? ((totalMatches / (checkedCount * 7)) * 100).toFixed(1) : '0.0';
-            document.getElementById('avg-match-rate').innerText = `${avg}%`;
-            document.getElementById('total-checked').innerText = `${checkedCount}回`;
-
-            const commentBox = document.getElementById('trend-comment');
-            if (checkedCount > 0) {
-                let comments = [];
-                const chronicMisses = Object.keys(missedNumbers).filter(n => missedNumbers[n] >= 3 && !hitNumbers[n]);
-                if (chronicMisses.length > 0) {
-                    comments.push(`⚠️ 番号【${chronicMisses.join(',')}】は予想に入れているのに最近外れ続けているね。そろそろ見直した方がいいかも。`);
-                }
-                const chronicHits = Object.keys(hitNumbers).filter(n => hitNumbers[n] >= 2);
-                if (chronicHits.length > 0) {
-                    comments.push(`✨ 番号【${chronicHits.join(',')}】は読み通りよく当たっている！相性の良い番号だね。`);
-                }
-
-                if (comments.length === 0) {
-                    commentBox.innerHTML = '順調にデータが蓄積されているよ。さらに回数を重ねると傾向が見えてくるはず！';
-                } else {
-                    commentBox.innerHTML = comments.join('<br><br>');
-                }
-
-                updateTrendChart(trendData);
-            } else {
-                commentBox.innerHTML = 'データがありません。日曜日にスプレッドシートが更新されると自動で照合されるよ。';
-            }
-        }
-
-        function deletePrediction(id) {
-            if(confirm('この履歴を削除してもいい？')) {
-                savedPredictions = savedPredictions.filter(p => p.id !== id);
-                saveData();
-                renderHistory();
-            }
+            coldContainer.innerHTML = currentAnalysis.coldNumbers.map(n =>
+                `<span class="inline-flex w-8 h-8 rounded-full bg-blue-900 text-blue-200 items-center justify-center text-sm font-bold border border-blue-700">${n}</span>`
+            ).join('') || '<span class="text-sm text-gray-500">なし</span>';
         }
 
         // チャート描画
         function renderCharts() {
-            // 頻度グラフ (予想タブ)
             const ctxFreq = document.getElementById('freqChart').getContext('2d');
             const labels = [];
             const data = [];
@@ -495,7 +334,7 @@
                 data.push(currentAnalysis.counts[i]);
             }
 
-            if(freqChartInstance) freqChartInstance.destroy();
+            if (freqChartInstance) freqChartInstance.destroy();
             freqChartInstance = new Chart(ctxFreq, {
                 type: 'bar',
                 data: {
@@ -504,7 +343,7 @@
                         label: '全期間の出現回数',
                         data: data,
                         backgroundColor: 'rgba(250, 204, 21, 0.6)',
-                        borderColor: 'rgba(250, 204, 21, 1)',
+                        borderColor:     'rgba(250, 204, 21, 1)',
                         borderWidth: 1
                     }]
                 },
@@ -517,42 +356,6 @@
                     },
                     plugins: {
                         legend: { labels: { color: '#9ca3af' } }
-                    }
-                }
-            });
-
-            // トレンドグラフは初期化のみ
-            updateTrendChart([]);
-        }
-
-        function updateTrendChart(dataArray) {
-            const ctxTrend = document.getElementById('trendChart').getContext('2d');
-            const labels = dataArray.map((_, i) => `${i+1}回目`);
-
-            if(trendChartInstance) trendChartInstance.destroy();
-            trendChartInstance = new Chart(ctxTrend, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: '一致率 (%)',
-                        data: dataArray,
-                        borderColor: '#60a5fa',
-                        backgroundColor: 'rgba(96, 165, 250, 0.2)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.3
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true, max: 100, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#9ca3af' } },
-                        x: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#9ca3af' } }
-                    },
-                    plugins: {
-                        legend: { display: false }
                     }
                 }
             });
