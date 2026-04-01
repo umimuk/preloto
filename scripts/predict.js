@@ -42,21 +42,26 @@ function parseCSV(csv) {
             parseInt(parts[6], 10), parseInt(parts[7], 10),
             parseInt(parts[8], 10),
         ];
-        data.push({ round: roundNum, date: parts[1], numbers: nums });
+        // ⑥ ボーナス数字（Loto7は2個: parts[9], parts[10]）
+        const bonus = [];
+        if (parts.length > 9)  { const b = parseInt(parts[9],  10); if (!isNaN(b) && b >= 1 && b <= 37) bonus.push(b); }
+        if (parts.length > 10) { const b = parseInt(parts[10], 10); if (!isNaN(b) && b >= 1 && b <= 37) bonus.push(b); }
+        data.push({ round: roundNum, date: parts[1], numbers: nums, bonus });
     }
     data.sort((a, b) => b.round - a.round);
     return data;
 }
 
 // ------------------------------------------------------------------ //
-//  予想アルゴリズム（6条件付き）
+//  予想アルゴリズム（新D条件）
 // ------------------------------------------------------------------ //
 
 function analyzeData(historyData) {
-    const counts      = new Array(38).fill(0);
+    const counts       = new Array(38).fill(0);
     const last10Counts = new Array(38).fill(0);
-    const lastSeen    = new Array(38).fill(-1);
-    const pairs       = {};
+    const bonusCounts  = new Array(38).fill(0);  // ⑥ ボーナス数字出現回数
+    const lastSeen     = new Array(38).fill(-1);
+    const pairs        = {};
 
     historyData.forEach((drawObj, index) => {
         const draw = drawObj.numbers;
@@ -65,6 +70,10 @@ function analyzeData(historyData) {
             if (index < 10) last10Counts[num]++;
             if (lastSeen[num] === -1) lastSeen[num] = index;
         });
+        // ⑥ ボーナス数字集計
+        if (drawObj.bonus) {
+            drawObj.bonus.forEach(b => { if (b >= 1 && b <= 37) bonusCounts[b]++; });
+        }
         for (let i = 0; i < draw.length; i++) {
             for (let j = i + 1; j < draw.length; j++) {
                 const p = `${draw[i]}-${draw[j]}`;
@@ -73,34 +82,15 @@ function analyzeData(historyData) {
         }
     });
 
-    // ③ 連続未出現回数
-    const streakCount = new Array(38).fill(0);
-    for (let i = 1; i <= 37; i++) {
-        let streak = 0;
-        for (let r = 0; r < historyData.length; r++) {
-            if (historyData[r].numbers.includes(i)) break;
-            streak++;
-        }
-        streakCount[i] = streak;
-    }
-
-    // ② 直近2回連続出現番号
-    const last2Consecutive = new Set();
-    if (historyData.length >= 2) {
-        const r1 = new Set(historyData[0].numbers);
-        const r2 = new Set(historyData[1].numbers);
-        for (const n of r1) { if (r2.has(n)) last2Consecutive.add(n); }
-    }
-
-    // 前回当選番号（⑥用）
+    // 前回当選番号
     const prevWinning = historyData.length > 0 ? historyData[0].numbers : [];
 
-    // ④ 合計値の統計（meanSum ± 1σ）
-    const sums    = historyData.map(d => d.numbers.reduce((a, b) => a + b, 0));
-    const meanSum = sums.reduce((a, b) => a + b, 0) / sums.length;
-    const stdSum  = Math.sqrt(
-        sums.map(s => (s - meanSum) ** 2).reduce((a, b) => a + b, 0) / sums.length
-    );
+    // ② 連番ペア: 前回当選の±1番号
+    const prevNeighbors = new Set();
+    prevWinning.forEach(n => {
+        if (n - 1 >= 1)  prevNeighbors.add(n - 1);
+        if (n + 1 <= 37) prevNeighbors.add(n + 1);
+    });
 
     const hotNumbers  = [];
     const coldNumbers = [];
@@ -109,13 +99,18 @@ function analyzeData(historyData) {
         if (last10Counts[i] === 0) coldNumbers.push(i);
     }
 
-    // スコアリング（② ③ 込み）
+    // スコアリング（新D条件: ① ② ⑥）
     const scores = [];
     for (let i = 1; i <= 37; i++) {
         let score = counts[i] * 5;
 
-        if (lastSeen[i] > 0 && lastSeen[i] <= 5) score += 15;
+        // ① 直近10回の出現頻度重み付け
+        score += last10Counts[i] * 10;
 
+        // ② 連番ペア（前回当選の±1番号をスコア加点）
+        if (prevNeighbors.has(i)) score += 15;
+
+        // ペア相性
         let maxPairCount = 0;
         let bestPartner  = 0;
         for (let j = 1; j <= 37; j++) {
@@ -128,15 +123,14 @@ function analyzeData(historyData) {
         }
         if (maxPairCount >= 15) score += maxPairCount;
 
-        if (hotNumbers.includes(i))       score += 10;
-        if (last2Consecutive.has(i))      score -= 20; // ② 直近2回連続出現 → 減点
-        if (streakCount[i] >= 10)         score += 15; // ③ 連続10回以上休み → 加点
+        // ⑥ ボーナス数字の本数字昇格
+        if (bonusCounts[i] >= 3) score += bonusCounts[i] * 3;
 
         scores.push({
             num: i, score,
             freq: counts[i], last10: last10Counts[i],
             maxPairCount, bestPartner,
-            streak: streakCount[i],
+            bonus: bonusCounts[i],
         });
     }
     scores.sort((a, b) =>
@@ -144,30 +138,29 @@ function analyzeData(historyData) {
         b.freq  !== a.freq  ? b.freq  - a.freq  : a.num - b.num
     );
 
-    // ---- 後選択バリデーション（① ④ ⑤ ⑥） ----
+    // ---- 後選択バリデーション（③ ④ ⑤） ----
 
+    // ③ 奇数偶数バランス（全偶数・全奇数を除外、3:4 or 4:3 が理想）
     const isOddEvenOk = nums => {
         const e = nums.filter(n => n % 2 === 0).length;
-        return e >= 2 && e <= 5; // 偶2〜5、奇2〜5（全偶・全奇を除外）
+        return e >= 1 && e <= 6; // 全偶数(7個)・全奇数(0個)を除外
     };
-    const isSumOk  = nums => {
-        const s = nums.reduce((a, b) => a + b, 0);
-        return s >= meanSum - stdSum && s <= meanSum + stdSum;
-    };
+    // ④ 10の位の分布バランス（末尾同一3個以上NG）
     const isTailOk = nums => {
         const t = {};
         for (const n of nums) {
             t[n % 10] = (t[n % 10] || 0) + 1;
-            if (t[n % 10] >= 3) return false; // ⑤ 同一末尾3個以上 NG
+            if (t[n % 10] >= 3) return false;
         }
         return true;
     };
+    // ⑤ 前回当選番号の除外（完全一致3個以上被り制限）
     const isPrevOk = nums =>
-        nums.filter(n => prevWinning.includes(n)).length < 3; // ⑥ 前回被り2個以内
+        nums.filter(n => prevWinning.includes(n)).length < 3;
 
     function applyConstraints(initial) {
         const nums = initial.map(s => s.num);
-        if (isOddEvenOk(nums) && isSumOk(nums) && isTailOk(nums) && isPrevOk(nums)) return initial;
+        if (isOddEvenOk(nums) && isTailOk(nums) && isPrevOk(nums)) return initial;
 
         const usedSet   = new Set(nums);
         const remaining = scores.filter(s => !usedSet.has(s.num));
@@ -175,7 +168,7 @@ function analyzeData(historyData) {
         for (let i = initial.length - 1; i >= 0; i--) {
             for (const cand of remaining) {
                 const candidate = nums.map((v, idx) => idx === i ? cand.num : v);
-                if (isOddEvenOk(candidate) && isSumOk(candidate) && isTailOk(candidate) && isPrevOk(candidate)) {
+                if (isOddEvenOk(candidate) && isTailOk(candidate) && isPrevOk(candidate)) {
                     const result = [...initial];
                     result[i] = cand;
                     return result.sort((a, b) => a.num - b.num);
@@ -224,6 +217,14 @@ function countMatches(pattern, result) {
 }
 
 // ------------------------------------------------------------------ //
+//  ユーティリティ
+// ------------------------------------------------------------------ //
+
+function getRoundNum(roundLabel) {
+    return parseInt(roundLabel.replace(/[^0-9]/g, ''), 10);
+}
+
+// ------------------------------------------------------------------ //
 //  history.json 読み書き
 // ------------------------------------------------------------------ //
 
@@ -255,7 +256,7 @@ async function backfill(sheetData, stored) {
     const newEntries = [];
 
     for (const draw of target) {
-        if (stored.some(e => e.targetRound === draw.round)) continue;
+        if (stored.some(e => getRoundNum(e.round) === draw.round)) continue;
         // その回より前のデータで予想を再計算
         const prevData = sheetData.filter(h => h.round < draw.round);
         if (prevData.length < 5) continue; // データが少なすぎる場合はスキップ
@@ -266,11 +267,9 @@ async function backfill(sheetData, stored) {
         const pC = analysis.patternC.map(s => s.num);
 
         newEntries.push({
-            targetRound: draw.round,
+            round:       `第${draw.round}回`,
             date:        draw.date,
-            patternA:    pA,
-            patternB:    pB,
-            patternC:    pC,
+            predictions: { patternA: pA, patternB: pB, patternC: pC },
             result:      draw.numbers,
             matchA:      countMatches(pA, draw.numbers),
             matchB:      countMatches(pB, draw.numbers),
@@ -280,7 +279,7 @@ async function backfill(sheetData, stored) {
     }
 
     return [...newEntries, ...stored]
-        .sort((a, b) => b.targetRound - a.targetRound)
+        .sort((a, b) => getRoundNum(b.round) - getRoundNum(a.round))
         .slice(0, 10);
 }
 
@@ -301,14 +300,15 @@ async function main() {
     let resultsUpdated = false;
     stored.forEach(entry => {
         if (entry.result !== null) return;
-        const found = sheetData.find(h => h.round === entry.targetRound);
+        const roundNum = getRoundNum(entry.round);
+        const found = sheetData.find(h => h.round === roundNum);
         if (!found) return;
         entry.result = found.numbers;
-        entry.matchA = countMatches(entry.patternA, entry.result);
-        entry.matchB = countMatches(entry.patternB, entry.result);
-        entry.matchC = countMatches(entry.patternC, entry.result);
+        entry.matchA = countMatches(entry.predictions.patternA, entry.result);
+        entry.matchB = countMatches(entry.predictions.patternB, entry.result);
+        entry.matchC = countMatches(entry.predictions.patternC, entry.result);
         resultsUpdated = true;
-        console.log(`Updated result for round ${entry.targetRound}: A=${entry.matchA} B=${entry.matchB} C=${entry.matchC}`);
+        console.log(`Updated result for ${entry.round}: A=${entry.matchA} B=${entry.matchB} C=${entry.matchC}`);
     });
 
     // backfill: 10件未満なら過去分を補完
@@ -317,18 +317,17 @@ async function main() {
     }
 
     // 最新の次回予想を追加（重複チェック）
-    const nextRound = sheetData[0].round + 1;
-    if (!stored.some(e => e.targetRound === nextRound)) {
+    const nextRound      = sheetData[0].round + 1;
+    const nextRoundLabel = `第${nextRound}回`;
+    if (!stored.some(e => e.round === nextRoundLabel)) {
         const analysis = analyzeData(sheetData);
         const pA = analysis.patternA.map(s => s.num);
         const pB = analysis.patternB.map(s => s.num);
         const pC = analysis.patternC.map(s => s.num);
         const newEntry = {
-            targetRound: nextRound,
+            round:       nextRoundLabel,
             date:        new Date().toISOString().slice(0, 10),
-            patternA:    pA,
-            patternB:    pB,
-            patternC:    pC,
+            predictions: { patternA: pA, patternB: pB, patternC: pC },
             result:      null,
             matchA:      null,
             matchB:      null,
@@ -336,7 +335,7 @@ async function main() {
         };
         stored = [newEntry, ...stored];
         if (stored.length > 10) stored = stored.slice(0, 10);
-        console.log(`Added new prediction for round ${nextRound}`);
+        console.log(`Added new prediction for ${nextRoundLabel}`);
     }
 
     saveHistory(stored);

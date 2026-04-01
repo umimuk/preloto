@@ -218,16 +218,21 @@
                         parseInt(parts[6], 10), parseInt(parts[7], 10),
                         parseInt(parts[8], 10)
                     ];
-                    historyData.push({ round: roundNum, date: parts[1], numbers: nums });
+                    // ⑥ ボーナス数字（Loto7は2個: parts[9], parts[10]）
+                    const bonus = [];
+                    if (parts.length > 9)  { const b = parseInt(parts[9],  10); if (!isNaN(b) && b >= 1 && b <= 37) bonus.push(b); }
+                    if (parts.length > 10) { const b = parseInt(parts[10], 10); if (!isNaN(b) && b >= 1 && b <= 37) bonus.push(b); }
+                    historyData.push({ round: roundNum, date: parts[1], numbers: nums, bonus });
                 }
             }
             historyData.sort((a, b) => b.round - a.round);
         }
 
-        // 分析ロジック（3パターン生成 + 6条件）
+        // 分析ロジック（3パターン生成 + 新D条件）
         function analyzeData() {
             const counts       = new Array(38).fill(0);
             const last10Counts = new Array(38).fill(0);
+            const bonusCounts  = new Array(38).fill(0);  // ⑥ ボーナス数字出現回数
             const lastSeen     = new Array(38).fill(-1);
             const pairs        = {};
 
@@ -238,6 +243,10 @@
                     if (index < 10) last10Counts[num]++;
                     if (lastSeen[num] === -1) lastSeen[num] = index;
                 });
+                // ⑥ ボーナス数字集計
+                if (drawObj.bonus) {
+                    drawObj.bonus.forEach(b => { if (b >= 1 && b <= 37) bonusCounts[b]++; });
+                }
                 for (let i = 0; i < draw.length; i++) {
                     for (let j = i + 1; j < draw.length; j++) {
                         const p = `${draw[i]}-${draw[j]}`;
@@ -246,34 +255,15 @@
                 }
             });
 
-            // ③ 連続未出現回数を算出
-            const streakCount = new Array(38).fill(0);
-            for (let i = 1; i <= 37; i++) {
-                let streak = 0;
-                for (let r = 0; r < historyData.length; r++) {
-                    if (historyData[r].numbers.includes(i)) break;
-                    streak++;
-                }
-                streakCount[i] = streak;
-            }
-
-            // ② 直近2回連続出現番号を特定
-            const last2Consecutive = new Set();
-            if (historyData.length >= 2) {
-                const r1 = new Set(historyData[0].numbers);
-                const r2 = new Set(historyData[1].numbers);
-                for (const n of r1) { if (r2.has(n)) last2Consecutive.add(n); }
-            }
-
-            // 前回当選番号（⑥用）
+            // 前回当選番号
             const prevWinning = historyData.length > 0 ? historyData[0].numbers : [];
 
-            // ④ 合計値の統計（meanSum ± 1σ）
-            const sums    = historyData.map(d => d.numbers.reduce((a, b) => a + b, 0));
-            const meanSum = sums.reduce((a, b) => a + b, 0) / sums.length;
-            const stdSum  = Math.sqrt(
-                sums.map(s => (s - meanSum) ** 2).reduce((a, b) => a + b, 0) / sums.length
-            );
+            // ② 連番ペア: 前回当選の±1番号
+            const prevNeighbors = new Set();
+            prevWinning.forEach(n => {
+                if (n - 1 >= 1)  prevNeighbors.add(n - 1);
+                if (n + 1 <= 37) prevNeighbors.add(n + 1);
+            });
 
             const hotNumbers  = [];
             const coldNumbers = [];
@@ -282,15 +272,20 @@
                 if (last10Counts[i] === 0) coldNumbers.push(i);
             }
 
-            // スコアリング（② ③ 込み）
+            // スコアリング（新D条件: ① ② ⑥）
             const scores = [];
             for (let i = 1; i <= 37; i++) {
                 let score   = counts[i] * 5;
                 let reasons = [`全期間で${counts[i]}回出現`];
 
-                if (lastSeen[i] > 0 && lastSeen[i] <= 5) {
+                // ① 直近10回の出現頻度重み付け
+                score += last10Counts[i] * 10;
+                if (last10Counts[i] > 0) reasons.push(`直近10回で${last10Counts[i]}回出現（頻度加点）`);
+
+                // ② 連番ペア（前回当選の±1番号をスコア加点）
+                if (prevNeighbors.has(i)) {
                     score += 15;
-                    reasons.push('直近5回以内に出ており間隔が良好');
+                    reasons.push('前回当選の隣番号（連番ペア加点）');
                 }
 
                 let maxPairCount = 0, bestPartner = 0;
@@ -304,33 +299,37 @@
                     reasons.push(`${bestPartner}番とよく一緒に出る（${maxPairCount}回）`);
                 }
 
-                if (hotNumbers.includes(i))  { score += 10; reasons.push('最近のトレンドに乗っている熱い番号'); }
-                if (last2Consecutive.has(i)) { score -= 20; reasons.push('直近2回連続出現のため減点'); }          // ②
-                if (streakCount[i] >= 10)    { score += 15; reasons.push(`${streakCount[i]}回連続で出ていない番号`); } // ③
+                // ⑥ ボーナス数字の本数字昇格
+                if (bonusCounts[i] >= 3) {
+                    score += bonusCounts[i] * 3;
+                    reasons.push(`ボーナス数字として${bonusCounts[i]}回出現（昇格加点）`);
+                }
 
                 scores.push({ num: i, score, freq: counts[i], last10: last10Counts[i],
-                              maxPairCount, bestPartner, reasons, streak: streakCount[i] });
+                              maxPairCount, bestPartner, reasons, bonus: bonusCounts[i] });
             }
             scores.sort((a, b) =>
                 b.score !== a.score ? b.score - a.score :
                 b.freq  !== a.freq  ? b.freq  - a.freq  : a.num - b.num
             );
 
-            // ---- 後選択バリデーション（① ④ ⑤ ⑥） ----
-            const isOddEvenOk = nums => { const e = nums.filter(n => n % 2 === 0).length; return e >= 2 && e <= 5; };   // ①
-            const isSumOk     = nums => { const s = nums.reduce((a,b)=>a+b,0); return s >= meanSum-stdSum && s <= meanSum+stdSum; }; // ④
-            const isTailOk    = nums => { const t={}; for(const n of nums){t[n%10]=(t[n%10]||0)+1; if(t[n%10]>=3) return false;} return true; }; // ⑤
-            const isPrevOk    = nums => nums.filter(n => prevWinning.includes(n)).length < 3;                             // ⑥
+            // ---- 後選択バリデーション（③ ④ ⑤） ----
+            // ③ 奇数偶数バランス（全偶数・全奇数を除外）
+            const isOddEvenOk = nums => { const e = nums.filter(n => n % 2 === 0).length; return e >= 1 && e <= 6; };
+            // ④ 10の位の分布バランス（末尾同一3個以上NG）
+            const isTailOk    = nums => { const t={}; for(const n of nums){t[n%10]=(t[n%10]||0)+1; if(t[n%10]>=3) return false;} return true; };
+            // ⑤ 前回当選番号の除外（完全一致3個以上被り制限）
+            const isPrevOk    = nums => nums.filter(n => prevWinning.includes(n)).length < 3;
 
             function applyConstraints(initial) {
                 const nums = initial.map(s => s.num);
-                if (isOddEvenOk(nums) && isSumOk(nums) && isTailOk(nums) && isPrevOk(nums)) return initial;
+                if (isOddEvenOk(nums) && isTailOk(nums) && isPrevOk(nums)) return initial;
                 const usedSet   = new Set(nums);
                 const remaining = scores.filter(s => !usedSet.has(s.num));
                 for (let i = initial.length - 1; i >= 0; i--) {
                     for (const cand of remaining) {
                         const candidate = nums.map((v, idx) => idx === i ? cand.num : v);
-                        if (isOddEvenOk(candidate) && isSumOk(candidate) && isTailOk(candidate) && isPrevOk(candidate)) {
+                        if (isOddEvenOk(candidate) && isTailOk(candidate) && isPrevOk(candidate)) {
                             const result = [...initial]; result[i] = cand;
                             return result.sort((a, b) => a.num - b.num);
                         }
@@ -365,7 +364,7 @@
             }
             const patternC = applyConstraints(cBase.sort((a, b) => a.num - b.num));
 
-            currentAnalysis = { patternA, patternB, patternC, counts, hotNumbers, coldNumbers, scores, meanSum, stdSum };
+            currentAnalysis = { patternA, patternB, patternC, counts, hotNumbers, coldNumbers, scores };
         }
 
         // ===== 結果照合（predictionHistory に対してインメモリで更新） =====
@@ -395,12 +394,13 @@
         function checkAndUpdateHistory() {
             predictionHistory.forEach(entry => {
                 if (entry.result !== null) return;
-                const found = historyData.find(h => h.round === entry.targetRound);
+                const roundNum = parseInt(entry.round.replace(/[^0-9]/g, ''), 10);
+                const found = historyData.find(h => h.round === roundNum);
                 if (!found) return;
                 entry.result = found.numbers;
-                entry.matchA = countMatches(entry.patternA, entry.result);
-                entry.matchB = countMatches(entry.patternB, entry.result);
-                entry.matchC = countMatches(entry.patternC, entry.result);
+                entry.matchA = countMatches(entry.predictions.patternA, entry.result);
+                entry.matchB = countMatches(entry.predictions.patternB, entry.result);
+                entry.matchC = countMatches(entry.predictions.patternC, entry.result);
             });
         }
 
@@ -415,6 +415,7 @@
 
             container.innerHTML = predictionHistory.map(entry => {
                 const hasResult = entry.result !== null;
+                const preds     = entry.predictions || {};
 
                 const ballHtml = (nums, colorClass) =>
                     nums.map(n => `<span class="inline-flex w-7 h-7 rounded-full ${colorClass} items-center justify-center text-xs font-bold border">${n}</span>`).join('');
@@ -443,13 +444,13 @@
                 return `
                     <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
                         <div class="flex items-center justify-between mb-3">
-                            <span class="font-bold text-yellow-400">第${entry.targetRound}回</span>
+                            <span class="font-bold text-yellow-400">${entry.round}</span>
                             <span class="text-xs text-gray-500">${entry.date}</span>
                         </div>
                         <div class="space-y-2">
-                            ${patternRow('👑 王道',      entry.patternA, entry.matchA, 'bg-yellow-900 text-yellow-200 border-yellow-700')}
-                            ${patternRow('🧊 逆張り',    entry.patternB, entry.matchB, 'bg-blue-900 text-blue-200 border-blue-700')}
-                            ${patternRow('⚖️ バランス', entry.patternC, entry.matchC, 'bg-purple-900 text-purple-200 border-purple-700')}
+                            ${patternRow('👑 王道',      preds.patternA, entry.matchA, 'bg-yellow-900 text-yellow-200 border-yellow-700')}
+                            ${patternRow('🧊 逆張り',    preds.patternB, entry.matchB, 'bg-blue-900 text-blue-200 border-blue-700')}
+                            ${patternRow('⚖️ バランス', preds.patternC, entry.matchC, 'bg-purple-900 text-purple-200 border-purple-700')}
                         </div>
                         ${resultHtml}
                     </div>`;
