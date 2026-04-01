@@ -136,9 +136,10 @@
 
     <script>
         // --- データ状態管理 ---
-        let historyData = [];    // スプレッドシートのデータ (index 0 が最新)
-        let currentAnalysis = null;
-        let nextRoundNum = 1;
+        let historyData       = [];  // スプレッドシートのデータ (index 0 が最新)
+        let predictionHistory = [];  // data/history.json から読み込んだ予想履歴
+        let currentAnalysis   = null;
+        let nextRoundNum      = 1;
         let freqChartInstance = null;
 
         // タブ切り替え
@@ -153,8 +154,20 @@
         }
 
         // 初期化
-        function init() {
+        async function init() {
+            await loadHistoryJson();  // history.json を先に読み込んでから予想を生成
             fetchSheetData();
+        }
+
+        // data/history.json を fetch で読み込む（GitHub Actions が更新するファイル）
+        async function loadHistoryJson() {
+            try {
+                const res = await fetch('./data/history.json');
+                if (!res.ok) throw new Error('history.json not found');
+                predictionHistory = await res.json();
+            } catch {
+                predictionHistory = [];
+            }
         }
 
         // スプレッドシートからデータを取得
@@ -177,8 +190,7 @@
                 }
 
                 analyzeData();
-                saveToLocalStorage();         // 変更3: 自動保存
-                checkAndUpdateHistory();       // 変更4: 結果照合更新
+                checkAndUpdateHistory();  // スプレッドシート再取得時に result=null のエントリをインメモリ照合
                 renderPrediction();
                 renderCharts();
                 document.getElementById('loading-msg').classList.add('hidden');
@@ -206,18 +218,23 @@
                         parseInt(parts[6], 10), parseInt(parts[7], 10),
                         parseInt(parts[8], 10)
                     ];
-                    historyData.push({ round: roundNum, date: parts[1], numbers: nums });
+                    // ⑥ ボーナス数字（Loto7は2個: parts[9], parts[10]）
+                    const bonus = [];
+                    if (parts.length > 9)  { const b = parseInt(parts[9],  10); if (!isNaN(b) && b >= 1 && b <= 37) bonus.push(b); }
+                    if (parts.length > 10) { const b = parseInt(parts[10], 10); if (!isNaN(b) && b >= 1 && b <= 37) bonus.push(b); }
+                    historyData.push({ round: roundNum, date: parts[1], numbers: nums, bonus });
                 }
             }
             historyData.sort((a, b) => b.round - a.round);
         }
 
-        // 分析ロジック（3パターン生成）
+        // 分析ロジック（3パターン生成 + 新D条件）
         function analyzeData() {
-            const counts = new Array(38).fill(0);
+            const counts       = new Array(38).fill(0);
             const last10Counts = new Array(38).fill(0);
-            const lastSeen = new Array(38).fill(-1);
-            const pairs = {};
+            const bonusCounts  = new Array(38).fill(0);  // ⑥ ボーナス数字出現回数
+            const lastSeen     = new Array(38).fill(-1);
+            const pairs        = {};
 
             historyData.forEach((drawObj, index) => {
                 const draw = drawObj.numbers;
@@ -225,131 +242,132 @@
                     counts[num]++;
                     if (index < 10) last10Counts[num]++;
                     if (lastSeen[num] === -1) lastSeen[num] = index;
-
-                    for (let i = 0; i < draw.length; i++) {
-                        for (let j = i + 1; j < draw.length; j++) {
-                            const p = `${draw[i]}-${draw[j]}`;
-                            pairs[p] = (pairs[p] || 0) + 1;
-                        }
-                    }
                 });
+                // ⑥ ボーナス数字集計
+                if (drawObj.bonus) {
+                    drawObj.bonus.forEach(b => { if (b >= 1 && b <= 37) bonusCounts[b]++; });
+                }
+                for (let i = 0; i < draw.length; i++) {
+                    for (let j = i + 1; j < draw.length; j++) {
+                        const p = `${draw[i]}-${draw[j]}`;
+                        pairs[p] = (pairs[p] || 0) + 1;
+                    }
+                }
             });
 
-            const hotNumbers = [];
+            // 前回当選番号
+            const prevWinning = historyData.length > 0 ? historyData[0].numbers : [];
+
+            // ② 連番ペア: 前回当選の±1番号
+            const prevNeighbors = new Set();
+            prevWinning.forEach(n => {
+                if (n - 1 >= 1)  prevNeighbors.add(n - 1);
+                if (n + 1 <= 37) prevNeighbors.add(n + 1);
+            });
+
+            const hotNumbers  = [];
             const coldNumbers = [];
             for (let i = 1; i <= 37; i++) {
                 if (last10Counts[i] >= 3) hotNumbers.push(i);
                 if (last10Counts[i] === 0) coldNumbers.push(i);
             }
 
-            // スコアリング（全番号）
+            // スコアリング（新D条件: ① ② ⑥）
             const scores = [];
             for (let i = 1; i <= 37; i++) {
-                let score = counts[i] * 5;
+                let score   = counts[i] * 5;
                 let reasons = [`全期間で${counts[i]}回出現`];
 
-                if (lastSeen[i] > 0 && lastSeen[i] <= 5) {
+                // ① 直近10回の出現頻度重み付け
+                score += last10Counts[i] * 10;
+                if (last10Counts[i] > 0) reasons.push(`直近10回で${last10Counts[i]}回出現（頻度加点）`);
+
+                // ② 連番ペア（前回当選の±1番号をスコア加点）
+                if (prevNeighbors.has(i)) {
                     score += 15;
-                    reasons.push(`直近5回以内に出ており間隔が良好`);
+                    reasons.push('前回当選の隣番号（連番ペア加点）');
                 }
 
-                let maxPairCount = 0;
-                let bestPartner = 0;
+                let maxPairCount = 0, bestPartner = 0;
                 for (let j = 1; j <= 37; j++) {
                     if (i === j) continue;
                     const p = i < j ? `${i}-${j}` : `${j}-${i}`;
-                    if (pairs[p] && pairs[p] > maxPairCount) {
-                        maxPairCount = pairs[p];
-                        bestPartner = j;
-                    }
+                    if (pairs[p] && pairs[p] > maxPairCount) { maxPairCount = pairs[p]; bestPartner = j; }
                 }
-
                 if (maxPairCount >= 15) {
                     score += maxPairCount;
                     reasons.push(`${bestPartner}番とよく一緒に出る（${maxPairCount}回）`);
                 }
 
-                if (hotNumbers.includes(i)) {
-                    score += 10;
-                    reasons.push(`最近のトレンドに乗っている熱い番号`);
+                // ⑥ ボーナス数字の本数字昇格
+                if (bonusCounts[i] >= 3) {
+                    score += bonusCounts[i] * 3;
+                    reasons.push(`ボーナス数字として${bonusCounts[i]}回出現（昇格加点）`);
                 }
 
-                scores.push({ num: i, score, freq: counts[i], last10: last10Counts[i], maxPairCount, bestPartner, reasons });
+                scores.push({ num: i, score, freq: counts[i], last10: last10Counts[i],
+                              maxPairCount, bestPartner, reasons, bonus: bonusCounts[i] });
+            }
+            scores.sort((a, b) =>
+                b.score !== a.score ? b.score - a.score :
+                b.freq  !== a.freq  ? b.freq  - a.freq  : a.num - b.num
+            );
+
+            // ---- 後選択バリデーション（③ ④ ⑤） ----
+            // ③ 奇数偶数バランス（全偶数・全奇数を除外）
+            const isOddEvenOk = nums => { const e = nums.filter(n => n % 2 === 0).length; return e >= 1 && e <= 6; };
+            // ④ 10の位の分布バランス（末尾同一3個以上NG）
+            const isTailOk    = nums => { const t={}; for(const n of nums){t[n%10]=(t[n%10]||0)+1; if(t[n%10]>=3) return false;} return true; };
+            // ⑤ 前回当選番号の除外（完全一致3個以上被り制限）
+            const isPrevOk    = nums => nums.filter(n => prevWinning.includes(n)).length < 3;
+
+            function applyConstraints(initial) {
+                const nums = initial.map(s => s.num);
+                if (isOddEvenOk(nums) && isTailOk(nums) && isPrevOk(nums)) return initial;
+                const usedSet   = new Set(nums);
+                const remaining = scores.filter(s => !usedSet.has(s.num));
+                for (let i = initial.length - 1; i >= 0; i--) {
+                    for (const cand of remaining) {
+                        const candidate = nums.map((v, idx) => idx === i ? cand.num : v);
+                        if (isOddEvenOk(candidate) && isTailOk(candidate) && isPrevOk(candidate)) {
+                            const result = [...initial]; result[i] = cand;
+                            return result.sort((a, b) => a.num - b.num);
+                        }
+                    }
+                }
+                return initial; // fallback: バリデーション通過できない場合そのまま
             }
 
-            scores.sort((a, b) => {
-                if (b.score !== a.score) return b.score - a.score;
-                if (b.freq !== a.freq) return b.freq - a.freq;
-                return a.num - b.num;
-            });
-
             // --- パターンA「王道」: スコア上位7個 ---
-            const patternA = scores.slice(0, 7).sort((a, b) => a.num - b.num);
+            const patternA = applyConstraints(scores.slice(0, 7).sort((a, b) => a.num - b.num));
 
-            // --- パターンB「逆張り」: last10Counts 0 or 1 の冷え番号を優先、足りない分は通常スコア順 ---
-            const coldPool  = scores.filter(s => s.last10 <= 1);
-            const warmPool  = scores.filter(s => s.last10 > 1);
-            const bPick     = [...coldPool.slice(0, 5), ...warmPool.slice(0, 2)];
-            const patternB  = bPick.slice(0, 7).sort((a, b) => a.num - b.num);
+            // --- パターンB「逆張り」: 冷え番号優先 ---
+            const coldPool = scores.filter(s => s.last10 <= 1);
+            const warmPool = scores.filter(s => s.last10 > 1);
+            const bBase    = [...coldPool.slice(0, 5), ...warmPool.slice(0, 2)].slice(0, 7).sort((a, b) => a.num - b.num);
+            const patternB = applyConstraints(bBase);
 
             // --- パターンC「バランス」: 熱い3 + 冷え2 + ペア相性上位2 ---
             const hotPool    = scores.filter(s => hotNumbers.includes(s.num));
             const coldPool2  = scores.filter(s => coldNumbers.includes(s.num));
             const pairSorted = [...scores].sort((a, b) => b.maxPairCount - a.maxPairCount);
-
             const c_hot  = hotPool.slice(0, 3);
             const usedC  = new Set(c_hot.map(s => s.num));
-
             const c_cold = coldPool2.filter(s => !usedC.has(s.num)).slice(0, 2);
             c_cold.forEach(s => usedC.add(s.num));
-
             const c_pair = pairSorted.filter(s => !usedC.has(s.num)).slice(0, 2);
             c_pair.forEach(s => usedC.add(s.num));
-
-            let patternC = [...c_hot, ...c_cold, ...c_pair];
-            if (patternC.length < 7) {
-                const fill = scores.filter(s => !usedC.has(s.num)).slice(0, 7 - patternC.length);
-                patternC = [...patternC, ...fill];
+            let cBase = [...c_hot, ...c_cold, ...c_pair];
+            if (cBase.length < 7) {
+                const fill = scores.filter(s => !usedC.has(s.num)).slice(0, 7 - cBase.length);
+                cBase = [...cBase, ...fill];
             }
-            patternC = patternC.sort((a, b) => a.num - b.num);
+            const patternC = applyConstraints(cBase.sort((a, b) => a.num - b.num));
 
             currentAnalysis = { patternA, patternB, patternC, counts, hotNumbers, coldNumbers, scores };
         }
 
-        // ===== 変更3: LocalStorage自動保存 =====
-        function saveToLocalStorage() {
-            if (!currentAnalysis || !nextRoundNum) return;
-
-            const today = new Date().toISOString().slice(0, 10);
-            const entry = {
-                targetRound: nextRoundNum,
-                date: today,
-                patternA: currentAnalysis.patternA.map(s => s.num),
-                patternB: currentAnalysis.patternB.map(s => s.num),
-                patternC: currentAnalysis.patternC.map(s => s.num),
-                result: null,
-                matchA: null,
-                matchB: null,
-                matchC: null
-            };
-
-            let stored = [];
-            try {
-                stored = JSON.parse(localStorage.getItem('preloto_history') || '[]');
-            } catch (e) { stored = []; }
-
-            // 同一回号があれば上書きしない
-            if (stored.some(e => e.targetRound === nextRoundNum)) return;
-
-            stored.unshift(entry);
-
-            // 10件上限
-            if (stored.length > 10) stored = stored.slice(0, 10);
-
-            localStorage.setItem('preloto_history', JSON.stringify(stored));
-        }
-
-        // ===== 変更4: 結果照合更新 =====
+        // ===== 結果照合（predictionHistory に対してインメモリで更新） =====
         function countMatches(pattern, result) {
             return pattern.filter(n => result.includes(n)).length;
         }
@@ -372,52 +390,38 @@
             return 'text-gray-500';
         }
 
+        // スプレッドシートデータを使って predictionHistory の result=null エントリをインメモリ照合
         function checkAndUpdateHistory() {
-            let stored = [];
-            try {
-                stored = JSON.parse(localStorage.getItem('preloto_history') || '[]');
-            } catch (e) { return; }
-
-            let updated = false;
-            stored.forEach(entry => {
+            predictionHistory.forEach(entry => {
                 if (entry.result !== null) return;
-                // historyData に targetRound のデータがあれば照合
-                const found = historyData.find(h => h.round === entry.targetRound);
+                const roundNum = parseInt(entry.round.replace(/[^0-9]/g, ''), 10);
+                const found = historyData.find(h => h.round === roundNum);
                 if (!found) return;
-
                 entry.result = found.numbers;
-                entry.matchA = countMatches(entry.patternA, entry.result);
-                entry.matchB = countMatches(entry.patternB, entry.result);
-                entry.matchC = countMatches(entry.patternC, entry.result);
-                updated = true;
+                entry.matchA = countMatches(entry.predictions.patternA, entry.result);
+                entry.matchB = countMatches(entry.predictions.patternB, entry.result);
+                entry.matchC = countMatches(entry.predictions.patternC, entry.result);
             });
-
-            if (updated) {
-                localStorage.setItem('preloto_history', JSON.stringify(stored));
-            }
         }
 
+        // 結果照合タブの描画（predictionHistory を使用）
         function renderHistory() {
-            let stored = [];
-            try {
-                stored = JSON.parse(localStorage.getItem('preloto_history') || '[]');
-            } catch (e) { stored = []; }
-
             const container = document.getElementById('history-list');
 
-            if (stored.length === 0) {
-                container.innerHTML = '<p class="text-center text-gray-500 py-8">履歴がありません。予想を読み込むと自動で保存されます。</p>';
+            if (predictionHistory.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-500 py-8">履歴がありません。GitHub Actions による自動更新をお待ちください。</p>';
                 return;
             }
 
-            container.innerHTML = stored.map(entry => {
+            container.innerHTML = predictionHistory.map(entry => {
                 const hasResult = entry.result !== null;
+                const preds     = entry.predictions || {};
 
                 const ballHtml = (nums, colorClass) =>
                     nums.map(n => `<span class="inline-flex w-7 h-7 rounded-full ${colorClass} items-center justify-center text-xs font-bold border">${n}</span>`).join('');
 
-                const patternRow = (label, nums, match, colorClass, borderColor) => {
-                    const grade = hasResult && match !== null ? getGrade(match) : null;
+                const patternRow = (label, nums, match, colorClass) => {
+                    const grade      = hasResult && match !== null ? getGrade(match) : null;
                     const gradeColor = grade ? getGradeColor(grade) : '';
                     return `
                         <div class="flex items-center gap-2 flex-wrap">
@@ -440,13 +444,13 @@
                 return `
                     <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
                         <div class="flex items-center justify-between mb-3">
-                            <span class="font-bold text-yellow-400">第${entry.targetRound}回</span>
+                            <span class="font-bold text-yellow-400">${entry.round}</span>
                             <span class="text-xs text-gray-500">${entry.date}</span>
                         </div>
                         <div class="space-y-2">
-                            ${patternRow('👑 王道', entry.patternA, entry.matchA, 'bg-yellow-900 text-yellow-200 border-yellow-700', 'yellow')}
-                            ${patternRow('🧊 逆張り', entry.patternB, entry.matchB, 'bg-blue-900 text-blue-200 border-blue-700', 'blue')}
-                            ${patternRow('⚖️ バランス', entry.patternC, entry.matchC, 'bg-purple-900 text-purple-200 border-purple-700', 'purple')}
+                            ${patternRow('👑 王道',      preds.patternA, entry.matchA, 'bg-yellow-900 text-yellow-200 border-yellow-700')}
+                            ${patternRow('🧊 逆張り',    preds.patternB, entry.matchB, 'bg-blue-900 text-blue-200 border-blue-700')}
+                            ${patternRow('⚖️ バランス', preds.patternC, entry.matchC, 'bg-purple-900 text-purple-200 border-purple-700')}
                         </div>
                         ${resultHtml}
                     </div>`;
@@ -487,8 +491,8 @@
                 `冷え番号(${coldInC.length > 0 ? coldInC.join('・') : 'なし'}) + ペア相性上位でミックス`;
 
             // 熱い・冷えている
-            const hotContainer  = document.getElementById('hot-numbers');
-            hotContainer.innerHTML  = currentAnalysis.hotNumbers.map(n =>
+            const hotContainer = document.getElementById('hot-numbers');
+            hotContainer.innerHTML = currentAnalysis.hotNumbers.map(n =>
                 `<span class="inline-flex w-8 h-8 rounded-full bg-red-900 text-red-200 items-center justify-center text-sm font-bold border border-red-700">${n}</span>`
             ).join('') || '<span class="text-sm text-gray-500">なし</span>';
 
@@ -501,21 +505,17 @@
         // チャート描画
         function renderCharts() {
             const ctxFreq = document.getElementById('freqChart').getContext('2d');
-            const labels = [];
-            const data = [];
-            for (let i = 1; i <= 37; i++) {
-                labels.push(i);
-                data.push(currentAnalysis.counts[i]);
-            }
+            const labels = [], data = [];
+            for (let i = 1; i <= 37; i++) { labels.push(i); data.push(currentAnalysis.counts[i]); }
 
             if (freqChartInstance) freqChartInstance.destroy();
             freqChartInstance = new Chart(ctxFreq, {
                 type: 'bar',
                 data: {
-                    labels: labels,
+                    labels,
                     datasets: [{
                         label: '全期間の出現回数',
-                        data: data,
+                        data,
                         backgroundColor: 'rgba(250, 204, 21, 0.6)',
                         borderColor:     'rgba(250, 204, 21, 1)',
                         borderWidth: 1
@@ -528,15 +528,13 @@
                         y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#9ca3af' } },
                         x: { grid: { display: false }, ticks: { color: '#9ca3af' } }
                     },
-                    plugins: {
-                        legend: { labels: { color: '#9ca3af' } }
-                    }
+                    plugins: { legend: { labels: { color: '#9ca3af' } } }
                 }
             });
         }
 
         // 起動
-        window.onload = init;
+        window.onload = () => init();
     </script>
 </body>
 </html>
