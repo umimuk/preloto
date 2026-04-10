@@ -100,15 +100,24 @@ function analyzeData(historyData) {
     }
 
     // スコアリング（新D条件: ① ② ⑥）
+    // ② 直近5回の集計（修正②）
+    const last5Counts = new Array(38).fill(0);
+    historyData.slice(0, 5).forEach(drawObj => {
+        drawObj.numbers.forEach(num => last5Counts[num]++);
+    });
+
     const scores = [];
     for (let i = 1; i <= 37; i++) {
-        let score = counts[i] * 5;
+        let score = counts[i] * 2;
 
-        // ① 直近10回の出現頻度重み付け
-        score += last10Counts[i] * 10;
+        // ① 直近10回の出現頻度重み付け（修正①）
+        score += last10Counts[i] * 50;
 
-        // ② 連番ペア（前回当選の±1番号をスコア加点）
-        if (prevNeighbors.has(i)) score += 15;
+        // ② 直近5回に出現していない場合はペナルティ
+        if (last5Counts[i] === 0) score -= 80;
+
+        // ② 連番ペア（前回当選の±1番号をスコア加点）（修正③）
+        if (prevNeighbors.has(i)) score += 40;
 
         // ペア相性
         let maxPairCount = 0;
