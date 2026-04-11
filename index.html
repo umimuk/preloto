@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LOTO7 予想＆分析ツール</title>
+    <title>LOTO 予想＆分析ツール</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -22,7 +22,10 @@
         .ball-yellow { background: linear-gradient(135deg, #fef08a, #eab308); color: #422006; }
         .ball-gray   { background: linear-gradient(135deg, #9ca3af, #4b5563); color: #ffffff; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); }
         .ball-blue   { background: linear-gradient(135deg, #93c5fd, #3b82f6); color: #1e3a5f; text-shadow: none; }
+        .ball-cyan   { background: linear-gradient(135deg, #a5f3fc, #06b6d4); color: #164e63; text-shadow: none; }
         .ball-purple { background: linear-gradient(135deg, #c4b5fd, #8b5cf6); color: #2e1065; text-shadow: none; }
+        .ball-pink   { background: linear-gradient(135deg, #f472b6, #ec4899); color: #831843; text-shadow: none; }
+        .ball-green  { background: linear-gradient(135deg, #86efac, #16a34a); color: #15803d; text-shadow: none; }
 
         /* スマホ用調整 */
         @media (max-width: 640px) {
@@ -38,17 +41,25 @@
 
     <!-- ヘッダー -->
     <header class="bg-gray-800 border-b border-gray-700 p-4 text-center sticky top-0 z-10">
-        <h1 class="text-2xl font-bold text-yellow-400 tracking-wider">LOTO7 PREDICTOR</h1>
-        <p class="text-xs text-gray-400 mt-1">過去データ分析に基づく予想ツール</p>
+        <h1 class="text-2xl font-bold text-yellow-400 tracking-wider">LOTO PREDICTOR</h1>
+        <p class="text-xs text-gray-400 mt-1">過去データ分析に基づくLOTO7・LOTO6予想ツール</p>
         <p id="loading-msg" class="text-sm text-blue-400 mt-2 font-bold">データを読み込み中...</p>
         <p id="latest-info" class="text-xs text-green-400 mt-2 hidden"></p>
     </header>
 
-    <!-- タブ -->
+    <!-- くじ種別タブ -->
     <div class="max-w-3xl mx-auto px-4 mt-4">
         <div class="flex border-b border-gray-700">
-            <button class="tab-btn active px-6 py-3 font-bold text-sm" onclick="switchTab('prediction')">🎯 今週の予想</button>
-            <button class="tab-btn px-6 py-3 font-bold text-sm" onclick="switchTab('history')">📊 結果照合</button>
+            <button id="loto7-btn" class="tab-btn active px-6 py-3 font-bold text-sm" onclick="switchLoto('loto7')">LOTO7</button>
+            <button id="loto6-btn" class="tab-btn px-6 py-3 font-bold text-sm" onclick="switchLoto('loto6')">LOTO6</button>
+        </div>
+    </div>
+
+    <!-- 機能タブ -->
+    <div class="max-w-3xl mx-auto px-4 mt-4">
+        <div class="flex border-b border-gray-700">
+            <button id="prediction-btn" class="tab-btn active px-6 py-3 font-bold text-sm" onclick="switchTab('prediction')">🎯 今週の予想</button>
+            <button id="history-btn" class="tab-btn px-6 py-3 font-bold text-sm" onclick="switchTab('history')">📊 結果照合</button>
         </div>
     </div>
 
@@ -136,17 +147,28 @@
 
     <script>
         // --- データ状態管理 ---
-        let historyData       = [];  // スプレッドシートのデータ (index 0 が最新)
-        let predictionHistory = [];  // data/history.json から読み込んだ予想履歴
+        let currentLotoType   = 'loto7';  // 'loto7' or 'loto6'
+        let historyData       = {};  // { loto7: [...], loto6: [...] }
+        let predictionHistory = {};  // { loto7: [...], loto6: [...] }
         let currentAnalysis   = null;
         let nextRoundNum      = 1;
         let freqChartInstance = null;
+
+        // くじ種別切り替え
+        function switchLoto(lotoType) {
+            currentLotoType = lotoType;
+            document.getElementById('loto7-btn').classList.toggle('active', lotoType === 'loto7');
+            document.getElementById('loto6-btn').classList.toggle('active', lotoType === 'loto6');
+            renderPrediction();
+            renderCharts();
+            renderHistory();
+        }
 
         // タブ切り替え
         function switchTab(tab) {
             document.getElementById('tab-prediction').classList.toggle('hidden', tab !== 'prediction');
             document.getElementById('tab-history').classList.toggle('hidden', tab !== 'history');
-            document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+            document.querySelectorAll('#prediction-btn, #history-btn').forEach((btn, i) => {
                 const isActive = (tab === 'prediction' && i === 0) || (tab === 'history' && i === 1);
                 btn.classList.toggle('active', isActive);
             });
@@ -164,33 +186,54 @@
             try {
                 const res = await fetch('./data/history.json');
                 if (!res.ok) throw new Error('history.json not found');
-                predictionHistory = await res.json();
+                const data = await res.json();
+                // 後方互換性: 配列形式（古い形式）が来た場合はloto7として扱う
+                if (Array.isArray(data)) {
+                    predictionHistory = { loto7: data, loto6: [] };
+                } else {
+                    predictionHistory = data || { loto7: [], loto6: [] };
+                }
             } catch {
-                predictionHistory = [];
+                predictionHistory = { loto7: [], loto6: [] };
             }
         }
 
         // スプレッドシートからデータを取得
         async function fetchSheetData() {
-            const sheetId = '1y_8fEZpj7rvJdx3AOMSxjxLsNh_zso2d_b1EVEZWNB4';
-            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
+            // LOTO7データ取得
+            const loto7SheetId = '1y_8fEZpj7rvJdx3AOMSxjxLsNh_zso2d_b1EVEZWNB4';
+            const loto7Url = `https://docs.google.com/spreadsheets/d/${loto7SheetId}/gviz/tq?tqx=out:csv`;
+
+            // LOTO6データ取得（スプレッドシートID未定：準備完了時に更新）
+            const loto6SheetId = null;  // TODO: renがスプレッドシートを作成したら更新
 
             try {
-                const res = await fetch(url);
-                if (!res.ok) throw new Error('Network error');
-                const csvText = await res.text();
-                parseCSV(csvText);
+                // LOTO7取得
+                const res7 = await fetch(loto7Url);
+                if (!res7.ok) throw new Error('LOTO7 Network error');
+                const csv7 = await res7.text();
+                historyData.loto7 = parseCSV(csv7, 'loto7');
 
-                if (historyData.length > 0) {
-                    nextRoundNum = historyData[0].round + 1;
-                    document.getElementById('latest-info').innerText =
-                        `最新データ: 第${historyData[0].round}回 (${historyData[0].date}) 読込完了`;
-                    document.getElementById('latest-info').classList.remove('hidden');
-                    document.getElementById('prediction-title').innerText = `第${nextRoundNum}回の予想番号`;
+                // LOTO6取得（スプレッドシート準備完了後）
+                historyData.loto6 = [];
+                if (loto6SheetId) {
+                    const loto6Url = `https://docs.google.com/spreadsheets/d/${loto6SheetId}/gviz/tq?tqx=out:csv`;
+                    try {
+                        const res6 = await fetch(loto6Url);
+                        if (res6.ok) {
+                            const csv6 = await res6.text();
+                            historyData.loto6 = parseCSV(csv6, 'loto6');
+                        }
+                    } catch (e) {
+                        console.warn('LOTO6データ取得失敗:', e);
+                        historyData.loto6 = [];
+                    }
                 }
 
+                // 表示更新
+                updateLatestInfo();
                 analyzeData();
-                checkAndUpdateHistory();  // スプレッドシート再取得時に result=null のエントリをインメモリ照合
+                checkAndUpdateHistory();
                 renderPrediction();
                 renderCharts();
                 document.getElementById('loading-msg').classList.add('hidden');
@@ -202,50 +245,96 @@
             }
         }
 
-        function parseCSV(csv) {
-            historyData = [];
+        // 最新情報の表示更新
+        function updateLatestInfo() {
+            const curData = historyData[currentLotoType];
+            if (curData && curData.length > 0) {
+                nextRoundNum = curData[0].round + 1;
+                document.getElementById('latest-info').innerText =
+                    `最新データ: 第${curData[0].round}回 (${curData[0].date}) 読込完了`;
+                document.getElementById('latest-info').classList.remove('hidden');
+                document.getElementById('prediction-title').innerText = `第${nextRoundNum}回の予想番号`;
+            }
+        }
+
+        function parseCSV(csv, lotoType) {
+            const data = [];
             const lines = csv.split('\n');
             for (let i = 1; i < lines.length; i++) {
                 const line = lines[i].replace(/"/g, '').trim();
                 if (!line) continue;
                 const parts = line.split(',');
-                if (parts.length >= 9) {
+
+                let numCount, maxNum, minLen;
+                if (lotoType === 'loto7') {
+                    numCount = 7; maxNum = 37; minLen = 9;
+                } else if (lotoType === 'loto6') {
+                    numCount = 6; maxNum = 43; minLen = 8;
+                } else {
+                    continue;
+                }
+
+                if (parts.length >= minLen) {
                     const roundNum = parseInt(parts[0].replace(/[^0-9]/g, ''), 10);
                     if (isNaN(roundNum)) continue;
-                    const nums = [
-                        parseInt(parts[2], 10), parseInt(parts[3], 10),
-                        parseInt(parts[4], 10), parseInt(parts[5], 10),
-                        parseInt(parts[6], 10), parseInt(parts[7], 10),
-                        parseInt(parts[8], 10)
-                    ];
-                    // ⑥ ボーナス数字（Loto7は2個: parts[9], parts[10]）
+
+                    const nums = [];
+                    for (let j = 0; j < numCount; j++) {
+                        const n = parseInt(parts[2 + j], 10);
+                        if (!isNaN(n) && n >= 1 && n <= maxNum) nums.push(n);
+                    }
+                    if (nums.length !== numCount) continue;
+
+                    // ボーナス数字（LOTO7: 2個, LOTO6: 1個）
                     const bonus = [];
-                    if (parts.length > 9)  { const b = parseInt(parts[9],  10); if (!isNaN(b) && b >= 1 && b <= 37) bonus.push(b); }
-                    if (parts.length > 10) { const b = parseInt(parts[10], 10); if (!isNaN(b) && b >= 1 && b <= 37) bonus.push(b); }
-                    historyData.push({ round: roundNum, date: parts[1], numbers: nums, bonus });
+                    if (lotoType === 'loto7') {
+                        if (parts.length > 9)  { const b = parseInt(parts[9],  10); if (!isNaN(b) && b >= 1 && b <= 37) bonus.push(b); }
+                        if (parts.length > 10) { const b = parseInt(parts[10], 10); if (!isNaN(b) && b >= 1 && b <= 37) bonus.push(b); }
+                    } else if (lotoType === 'loto6') {
+                        if (parts.length > 8) { const b = parseInt(parts[8], 10); if (!isNaN(b) && b >= 1 && b <= 43) bonus.push(b); }
+                    }
+
+                    data.push({ round: roundNum, date: parts[1], numbers: nums, bonus });
                 }
             }
-            historyData.sort((a, b) => b.round - a.round);
+            data.sort((a, b) => b.round - a.round);
+            return data;
         }
 
         // 分析ロジック（3パターン生成 + 新D条件）
         function analyzeData() {
-            const counts       = new Array(38).fill(0);
-            const last10Counts = new Array(38).fill(0);
-            const bonusCounts  = new Array(38).fill(0);  // ⑥ ボーナス数字出現回数
-            const lastSeen     = new Array(38).fill(-1);
+            const curData = historyData[currentLotoType];
+            if (!curData || curData.length === 0) {
+                currentAnalysis = null;
+                return;
+            }
+
+            // くじ種別ごとのパラメータ設定
+            let maxNum, selectCount, arraySize;
+            if (currentLotoType === 'loto7') {
+                maxNum = 37; selectCount = 7; arraySize = 38;
+            } else if (currentLotoType === 'loto6') {
+                maxNum = 43; selectCount = 6; arraySize = 44;
+            } else {
+                return;
+            }
+
+            const counts       = new Array(arraySize).fill(0);
+            const last10Counts = new Array(arraySize).fill(0);
+            const bonusCounts  = new Array(arraySize).fill(0);  // ボーナス数字出現回数
+            const lastSeen     = new Array(arraySize).fill(-1);
             const pairs        = {};
 
-            historyData.forEach((drawObj, index) => {
+            curData.forEach((drawObj, index) => {
                 const draw = drawObj.numbers;
                 draw.forEach(num => {
                     counts[num]++;
                     if (index < 10) last10Counts[num]++;
                     if (lastSeen[num] === -1) lastSeen[num] = index;
                 });
-                // ⑥ ボーナス数字集計
-                if (drawObj.bonus) {
-                    drawObj.bonus.forEach(b => { if (b >= 1 && b <= 37) bonusCounts[b]++; });
+                // ボーナス数字集計（LOTO7のみ）
+                if (currentLotoType === 'loto7' && drawObj.bonus) {
+                    drawObj.bonus.forEach(b => { if (b >= 1 && b <= maxNum) bonusCounts[b]++; });
                 }
                 for (let i = 0; i < draw.length; i++) {
                     for (let j = i + 1; j < draw.length; j++) {
@@ -256,25 +345,25 @@
             });
 
             // 前回当選番号
-            const prevWinning = historyData.length > 0 ? historyData[0].numbers : [];
+            const prevWinning = curData.length > 0 ? curData[0].numbers : [];
 
             // ② 連番ペア: 前回当選の±1番号
             const prevNeighbors = new Set();
             prevWinning.forEach(n => {
                 if (n - 1 >= 1)  prevNeighbors.add(n - 1);
-                if (n + 1 <= 37) prevNeighbors.add(n + 1);
+                if (n + 1 <= maxNum) prevNeighbors.add(n + 1);
             });
 
             const hotNumbers  = [];
             const coldNumbers = [];
-            for (let i = 1; i <= 37; i++) {
+            for (let i = 1; i <= maxNum; i++) {
                 if (last10Counts[i] >= 3) hotNumbers.push(i);
                 if (last10Counts[i] === 0) coldNumbers.push(i);
             }
 
             // スコアリング（新D条件: ① ② ⑥）
             const scores = [];
-            for (let i = 1; i <= 37; i++) {
+            for (let i = 1; i <= maxNum; i++) {
                 let score   = counts[i] * 5;
                 let reasons = [`全期間で${counts[i]}回出現`];
 
@@ -289,7 +378,7 @@
                 }
 
                 let maxPairCount = 0, bestPartner = 0;
-                for (let j = 1; j <= 37; j++) {
+                for (let j = 1; j <= maxNum; j++) {
                     if (i === j) continue;
                     const p = i < j ? `${i}-${j}` : `${j}-${i}`;
                     if (pairs[p] && pairs[p] > maxPairCount) { maxPairCount = pairs[p]; bestPartner = j; }
@@ -299,8 +388,8 @@
                     reasons.push(`${bestPartner}番とよく一緒に出る（${maxPairCount}回）`);
                 }
 
-                // ⑥ ボーナス数字の本数字昇格
-                if (bonusCounts[i] >= 3) {
+                // ボーナス数字の本数字昇格（LOTO7のみ）
+                if (currentLotoType === 'loto7' && bonusCounts[i] >= 3) {
                     score += bonusCounts[i] * 3;
                     reasons.push(`ボーナス数字として${bonusCounts[i]}回出現（昇格加点）`);
                 }
@@ -315,7 +404,11 @@
 
             // ---- 後選択バリデーション（③ ④ ⑤） ----
             // ③ 奇数偶数バランス（全偶数・全奇数を除外）
-            const isOddEvenOk = nums => { const e = nums.filter(n => n % 2 === 0).length; return e >= 1 && e <= 6; };
+            const isOddEvenOk = nums => {
+                const e = nums.filter(n => n % 2 === 0).length;
+                const minE = 1, maxE = selectCount - 1;
+                return e >= minE && e <= maxE;
+            };
             // ④ 10の位の分布バランス（末尾同一3個以上NG）
             const isTailOk    = nums => { const t={}; for(const n of nums){t[n%10]=(t[n%10]||0)+1; if(t[n%10]>=3) return false;} return true; };
             // ⑤ 前回当選番号の除外（完全一致3個以上被り制限）
@@ -338,28 +431,42 @@
                 return initial; // fallback: バリデーション通過できない場合そのまま
             }
 
-            // --- パターンA「王道」: スコア上位7個 ---
-            const patternA = applyConstraints(scores.slice(0, 7).sort((a, b) => a.num - b.num));
+            // --- パターンA「王道」: スコア上位selectCount個 ---
+            const patternA = applyConstraints(scores.slice(0, selectCount).sort((a, b) => a.num - b.num));
 
             // --- パターンB「逆張り」: 冷え番号優先 ---
             const coldPool = scores.filter(s => s.last10 <= 1);
             const warmPool = scores.filter(s => s.last10 > 1);
-            const bBase    = [...coldPool.slice(0, 5), ...warmPool.slice(0, 2)].slice(0, 7).sort((a, b) => a.num - b.num);
+            let coldCount = selectCount - 2;
+            let warmCount = 2;
+            if (currentLotoType === 'loto6') {
+                coldCount = selectCount - 2;  // 冷え4個
+                warmCount = 2;                 // 暖2個
+            } else {
+                coldCount = selectCount - 2;  // 冷え5個
+                warmCount = 2;                 // 暖2個
+            }
+            const bBase    = [...coldPool.slice(0, coldCount), ...warmPool.slice(0, warmCount)].slice(0, selectCount).sort((a, b) => a.num - b.num);
             const patternB = applyConstraints(bBase);
 
-            // --- パターンC「バランス」: 熱い3 + 冷え2 + ペア相性上位2 ---
+            // --- パターンC「バランス」 ---
+            // LOTO7: 熱い3 + 冷え2 + ペア相性上位2
+            // LOTO6: 熱い2 + 冷え2 + ペア相性上位2
             const hotPool    = scores.filter(s => hotNumbers.includes(s.num));
             const coldPool2  = scores.filter(s => coldNumbers.includes(s.num));
             const pairSorted = [...scores].sort((a, b) => b.maxPairCount - a.maxPairCount);
-            const c_hot  = hotPool.slice(0, 3);
+            const c_hot_cnt = currentLotoType === 'loto7' ? 3 : 2;
+            const c_cold_cnt = 2;
+            const c_pair_cnt = 2;
+            const c_hot  = hotPool.slice(0, c_hot_cnt);
             const usedC  = new Set(c_hot.map(s => s.num));
-            const c_cold = coldPool2.filter(s => !usedC.has(s.num)).slice(0, 2);
+            const c_cold = coldPool2.filter(s => !usedC.has(s.num)).slice(0, c_cold_cnt);
             c_cold.forEach(s => usedC.add(s.num));
-            const c_pair = pairSorted.filter(s => !usedC.has(s.num)).slice(0, 2);
+            const c_pair = pairSorted.filter(s => !usedC.has(s.num)).slice(0, c_pair_cnt);
             c_pair.forEach(s => usedC.add(s.num));
             let cBase = [...c_hot, ...c_cold, ...c_pair];
-            if (cBase.length < 7) {
-                const fill = scores.filter(s => !usedC.has(s.num)).slice(0, 7 - cBase.length);
+            if (cBase.length < selectCount) {
+                const fill = scores.filter(s => !usedC.has(s.num)).slice(0, selectCount - cBase.length);
                 cBase = [...cBase, ...fill];
             }
             const patternC = applyConstraints(cBase.sort((a, b) => a.num - b.num));
@@ -373,12 +480,22 @@
         }
 
         function getGrade(matchCount) {
-            if (matchCount >= 7) return '1等';
-            if (matchCount >= 6) return '3等';
-            if (matchCount >= 5) return '4等';
-            if (matchCount >= 4) return '5等';
-            if (matchCount >= 3) return '6等';
-            return 'ハズレ';
+            if (currentLotoType === 'loto6') {
+                // LOTO6の等級判定
+                if (matchCount >= 6) return '1等';
+                if (matchCount >= 5) return '3等';  // 本来は「2等（5個+ボーナス）」だが、ボーナス判定なしのため「3等」扱い
+                if (matchCount >= 4) return '4等';
+                if (matchCount >= 3) return '5等';
+                return 'ハズレ';
+            } else {
+                // LOTO7の等級判定
+                if (matchCount >= 7) return '1等';
+                if (matchCount >= 6) return '3等';
+                if (matchCount >= 5) return '4等';
+                if (matchCount >= 4) return '5等';
+                if (matchCount >= 3) return '6等';
+                return 'ハズレ';
+            }
         }
 
         function getGradeColor(grade) {
@@ -392,28 +509,50 @@
 
         // スプレッドシートデータを使って predictionHistory の result=null エントリをインメモリ照合
         function checkAndUpdateHistory() {
-            predictionHistory.forEach(entry => {
-                if (entry.result !== null) return;
-                const roundNum = parseInt(entry.round.replace(/[^0-9]/g, ''), 10);
-                const found = historyData.find(h => h.round === roundNum);
-                if (!found) return;
-                entry.result = found.numbers;
-                entry.matchA = countMatches(entry.predictions.patternA, entry.result);
-                entry.matchB = countMatches(entry.predictions.patternB, entry.result);
-                entry.matchC = countMatches(entry.predictions.patternC, entry.result);
-            });
+            // LOTO7履歴更新
+            if (predictionHistory.loto7) {
+                predictionHistory.loto7.forEach(entry => {
+                    if (entry.result !== null) return;
+                    const roundNum = parseInt(entry.round.replace(/[^0-9]/g, ''), 10);
+                    const found = historyData.loto7 && historyData.loto7.find(h => h.round === roundNum);
+                    if (!found) return;
+                    entry.result = found.numbers;
+                    entry.matchA = countMatches(entry.predictions.patternA, entry.result);
+                    entry.matchB = countMatches(entry.predictions.patternB, entry.result);
+                    entry.matchC = countMatches(entry.predictions.patternC, entry.result);
+                });
+            }
+            // LOTO6履歴更新
+            if (predictionHistory.loto6) {
+                predictionHistory.loto6.forEach(entry => {
+                    if (entry.result !== null) return;
+                    const roundNum = parseInt(entry.round.replace(/[^0-9]/g, ''), 10);
+                    const found = historyData.loto6 && historyData.loto6.find(h => h.round === roundNum);
+                    if (!found) return;
+                    entry.result = found.numbers;
+                    entry.matchA = countMatches(entry.predictions.patternA, entry.result);
+                    entry.matchB = countMatches(entry.predictions.patternB, entry.result);
+                    entry.matchC = countMatches(entry.predictions.patternC, entry.result);
+                });
+            }
         }
 
         // 結果照合タブの描画（predictionHistory を使用）
         function renderHistory() {
             const container = document.getElementById('history-list');
+            const curHistory = predictionHistory[currentLotoType] || [];
 
-            if (predictionHistory.length === 0) {
+            if (curHistory.length === 0) {
                 container.innerHTML = '<p class="text-center text-gray-500 py-8">履歴がありません。GitHub Actions による自動更新をお待ちください。</p>';
                 return;
             }
 
-            container.innerHTML = predictionHistory.map(entry => {
+            // LOTO6用の色定義
+            const colorA = currentLotoType === 'loto6' ? 'bg-green-900 text-green-200 border-green-700' : 'bg-yellow-900 text-yellow-200 border-yellow-700';
+            const colorB = currentLotoType === 'loto6' ? 'bg-cyan-900 text-cyan-200 border-cyan-700' : 'bg-blue-900 text-blue-200 border-blue-700';
+            const colorC = currentLotoType === 'loto6' ? 'bg-pink-900 text-pink-200 border-pink-700' : 'bg-purple-900 text-purple-200 border-purple-700';
+
+            container.innerHTML = curHistory.map(entry => {
                 const hasResult = entry.result !== null;
                 const preds     = entry.predictions || {};
 
@@ -448,9 +587,9 @@
                             <span class="text-xs text-gray-500">${entry.date}</span>
                         </div>
                         <div class="space-y-2">
-                            ${patternRow('👑 王道',      preds.patternA, entry.matchA, 'bg-yellow-900 text-yellow-200 border-yellow-700')}
-                            ${patternRow('🧊 逆張り',    preds.patternB, entry.matchB, 'bg-blue-900 text-blue-200 border-blue-700')}
-                            ${patternRow('⚖️ バランス', preds.patternC, entry.matchC, 'bg-purple-900 text-purple-200 border-purple-700')}
+                            ${patternRow('👑 王道',      preds.patternA, entry.matchA, colorA)}
+                            ${patternRow('🧊 逆張り',    preds.patternB, entry.matchB, colorB)}
+                            ${patternRow('⚖️ バランス', preds.patternC, entry.matchC, colorC)}
                         </div>
                         ${resultHtml}
                     </div>`;
@@ -459,20 +598,32 @@
 
         // 予想画面の描画
         function renderPrediction() {
+            if (!currentAnalysis) {
+                document.getElementById('pattern-a-balls').innerHTML = '<p class="text-gray-500">データを準備中...</p>';
+                document.getElementById('pattern-b-balls').innerHTML = '';
+                document.getElementById('pattern-c-balls').innerHTML = '';
+                return;
+            }
+
+            // くじ種別ごとのボール色設定
+            const ballColor = currentLotoType === 'loto6' ? 'ball-green' : 'ball-yellow';
+
             // パターンA（王道）
             const aContainer = document.getElementById('pattern-a-balls');
             aContainer.innerHTML = '';
             currentAnalysis.patternA.forEach(item => {
-                aContainer.innerHTML += `<div class="ball ball-yellow">${item.num}</div>`;
+                aContainer.innerHTML += `<div class="ball ${ballColor}">${item.num}</div>`;
             });
+            const selectCount = currentLotoType === 'loto7' ? 7 : 6;
             document.getElementById('pattern-a-reason').textContent =
-                `スコア上位7番号: ${currentAnalysis.patternA.map(i => i.num).join('・')}`;
+                `スコア上位${selectCount}番号: ${currentAnalysis.patternA.map(i => i.num).join('・')}`;
 
             // パターンB（逆張り）
             const bContainer = document.getElementById('pattern-b-balls');
             bContainer.innerHTML = '';
+            const ballColorB = currentLotoType === 'loto6' ? 'ball-cyan' : 'ball-blue';
             currentAnalysis.patternB.forEach(item => {
-                bContainer.innerHTML += `<div class="ball ball-blue">${item.num}</div>`;
+                bContainer.innerHTML += `<div class="ball ${ballColorB}">${item.num}</div>`;
             });
             const coldInB = currentAnalysis.patternB.filter(i => i.last10 <= 1).map(i => i.num);
             document.getElementById('pattern-b-reason').textContent =
@@ -481,14 +632,16 @@
             // パターンC（バランス）
             const cContainer = document.getElementById('pattern-c-balls');
             cContainer.innerHTML = '';
+            const ballColorC = currentLotoType === 'loto6' ? 'ball-pink' : 'ball-purple';
             currentAnalysis.patternC.forEach(item => {
-                cContainer.innerHTML += `<div class="ball ball-purple">${item.num}</div>`;
+                cContainer.innerHTML += `<div class="ball ${ballColorC}">${item.num}</div>`;
             });
             const hotInC  = currentAnalysis.patternC.filter(i => currentAnalysis.hotNumbers.includes(i.num)).map(i => i.num);
             const coldInC = currentAnalysis.patternC.filter(i => currentAnalysis.coldNumbers.includes(i.num)).map(i => i.num);
+            const hotDesc = currentLotoType === 'loto7' ? '熱い3' : '熱い2';
             document.getElementById('pattern-c-reason').textContent =
-                `熱い番号(${hotInC.length > 0 ? hotInC.join('・') : 'なし'}) + ` +
-                `冷え番号(${coldInC.length > 0 ? coldInC.join('・') : 'なし'}) + ペア相性上位でミックス`;
+                `${hotDesc}(${hotInC.length > 0 ? hotInC.join('・') : 'なし'}) + ` +
+                `冷え2(${coldInC.length > 0 ? coldInC.join('・') : 'なし'}) + ペア相性上位2でミックス`;
 
             // 熱い・冷えている
             const hotContainer = document.getElementById('hot-numbers');
@@ -504,9 +657,15 @@
 
         // チャート描画
         function renderCharts() {
+            if (!currentAnalysis) return;
+
             const ctxFreq = document.getElementById('freqChart').getContext('2d');
             const labels = [], data = [];
-            for (let i = 1; i <= 37; i++) { labels.push(i); data.push(currentAnalysis.counts[i]); }
+            const maxNum = currentLotoType === 'loto7' ? 37 : 43;
+            const bgColor = currentLotoType === 'loto6' ? 'rgba(134, 239, 172, 0.6)' : 'rgba(250, 204, 21, 0.6)';
+            const borderColor = currentLotoType === 'loto6' ? 'rgba(134, 239, 172, 1)' : 'rgba(250, 204, 21, 1)';
+
+            for (let i = 1; i <= maxNum; i++) { labels.push(i); data.push(currentAnalysis.counts[i]); }
 
             if (freqChartInstance) freqChartInstance.destroy();
             freqChartInstance = new Chart(ctxFreq, {
@@ -516,8 +675,8 @@
                     datasets: [{
                         label: '全期間の出現回数',
                         data,
-                        backgroundColor: 'rgba(250, 204, 21, 0.6)',
-                        borderColor:     'rgba(250, 204, 21, 1)',
+                        backgroundColor: bgColor,
+                        borderColor: borderColor,
                         borderWidth: 1
                     }]
                 },
