@@ -2,7 +2,9 @@ name: Update History
 
 on:
   schedule:
-    # 毎週金曜 8:30 UTC (17:30 JST) — ロト7抽選日翌朝に更新
+    # 毎週木曜 12:30 UTC (21:30 JST) — LOTO6抽選（木曜）翌朝に実行
+    - cron: '30 12 * * 4'
+    # 毎週金曜 8:30 UTC (17:30 JST) — LOTO7抽選（金曜）翌朝に実行
     - cron: '30 8 * * 5'
   workflow_dispatch:
 
