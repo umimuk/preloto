@@ -17,6 +17,7 @@ const LOTO7_SHEET_ID  = '1y_8fEZpj7rvJdx3AOMSxjxLsNh_zso2d_b1EVEZWNB4';
 
 // ---- LOTO6 定数 ----
 const LOTO6_SHEET_ID  = '1y_8fEZpj7rvJdx3AOMSxjxLsNh_zso2d_b1EVEZWNB4';
+const LOTO6_GID       = '881951326';  // LOTO6結果シートのgid（4/14 OAuth再認証時に確認）
 const LOTO6_MAX_NUM   = 43;
 const LOTO6_PICK      = 6;
 
@@ -30,12 +31,13 @@ const HISTORY_PATH = path.join(__dirname, '../data/history.json');
 //  CSV 取得・パース
 // ------------------------------------------------------------------ //
 
-async function fetchSheetData(sheetId, params) {
+async function fetchSheetData(sheetId, params, gid = null) {
     if (!sheetId) {
         console.log(`⚠️  Sheet ID is empty for loto${params.selectCount === 6 ? 6 : 7}, skipping fetch`);
         return [];
     }
-    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
+    const gidParam = gid ? `&gid=${gid}` : '';
+    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${gidParam}`;
     const res  = await fetch(url);
     if (!res.ok) throw new Error(`Spreadsheet fetch failed: ${res.status}`);
     return parseCSV(await res.text(), params);
@@ -47,7 +49,7 @@ async function fetchLoto6SheetData() {
         console.log(`⚠️  Sheet ID is empty for LOTO6, skipping fetch`);
         return [];
     }
-    const url = `https://docs.google.com/spreadsheets/d/${LOTO6_SHEET_ID}/gviz/tq?tqx=out:csv`;
+    const url = `https://docs.google.com/spreadsheets/d/${LOTO6_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${LOTO6_GID}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Spreadsheet fetch failed: ${res.status}`);
     return parseCSVLoto6(await res.text());
@@ -620,7 +622,7 @@ async function main() {
 
     // LOTO6処理
     try {
-        const loto6SheetData = await fetchSheetData(LOTO6_SHEET_ID, LOTO6_PARAMS);
+        const loto6SheetData = await fetchSheetData(LOTO6_SHEET_ID, LOTO6_PARAMS, LOTO6_GID);
         history.loto6 = await updateLotoData(loto6SheetData, history.loto6, LOTO6_PARAMS, 'LOTO6');
         console.log(`LOTO6 history: ${history.loto6.length} entries`);
     } catch (e) {
