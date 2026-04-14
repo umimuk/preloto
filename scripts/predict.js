@@ -16,7 +16,7 @@ const path = require('path');
 const LOTO7_SHEET_ID  = '1y_8fEZpj7rvJdx3AOMSxjxLsNh_zso2d_b1EVEZWNB4';
 
 // ---- LOTO6 定数 ----
-const LOTO6_SHEET_ID  = '';      // 後で差し替え
+const LOTO6_SHEET_ID  = '1y_8fEZpj7rvJdx3AOMSxjxLsNh_zso2d_b1EVEZWNB4';
 const LOTO6_MAX_NUM   = 43;
 const LOTO6_PICK      = 6;
 
