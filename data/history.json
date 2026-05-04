@@ -409,6 +409,40 @@
   ],
   "loto6": [
     {
+      "round": "第2100回",
+      "date": "2026-05-04",
+      "predictions": {
+        "patternA": [
+          6,
+          21,
+          24,
+          27,
+          28,
+          36
+        ],
+        "patternB": [
+          4,
+          6,
+          15,
+          22,
+          39,
+          42
+        ],
+        "patternC": [
+          5,
+          6,
+          33,
+          35,
+          39,
+          42
+        ]
+      },
+      "result": null,
+      "matchA": null,
+      "matchB": null,
+      "matchC": null
+    },
+    {
       "round": "第2099回",
       "date": "2026-05-01",
       "predictions": {
@@ -437,10 +471,17 @@
           39
         ]
       },
-      "result": null,
-      "matchA": null,
-      "matchB": null,
-      "matchC": null
+      "result": [
+        19,
+        21,
+        34,
+        36,
+        39,
+        42
+      ],
+      "matchA": 0,
+      "matchB": 1,
+      "matchC": 1
     },
     {
       "round": "第2098回",
@@ -761,47 +802,6 @@
       ],
       "matchA": 1,
       "matchB": 0,
-      "matchC": 0
-    },
-    {
-      "round": "第2089回",
-      "date": "2026年03月30日",
-      "predictions": {
-        "patternA": [
-          6,
-          8,
-          19,
-          26,
-          28,
-          37
-        ],
-        "patternB": [
-          26,
-          27,
-          28,
-          35,
-          39,
-          43
-        ],
-        "patternC": [
-          2,
-          5,
-          20,
-          21,
-          26,
-          39
-        ]
-      },
-      "result": [
-        9,
-        16,
-        18,
-        32,
-        37,
-        43
-      ],
-      "matchA": 1,
-      "matchB": 1,
       "matchC": 0
     }
   ]
